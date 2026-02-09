@@ -16,13 +16,31 @@ export default function Auth() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    // Login using fake email derived from username
-    const email = `${username.toLowerCase().trim()}@app.internal`;
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (error) {
-      toast({ title: "Error al iniciar sesión", description: "Usuario o contraseña incorrectos", variant: "destructive" });
+
+    try {
+      // Call login edge function to resolve username to email
+      const res = await supabase.functions.invoke("login", {
+        body: { username: username.trim(), password },
+      });
+
+      if (res.error || res.data?.error) {
+        toast({ title: "Error al iniciar sesión", description: res.data?.error || "Usuario o contraseña incorrectos", variant: "destructive" });
+        setLoading(false);
+        return;
+      }
+
+      // Set the session from the response
+      if (res.data?.session) {
+        await supabase.auth.setSession({
+          access_token: res.data.session.access_token,
+          refresh_token: res.data.session.refresh_token,
+        });
+      }
+    } catch {
+      toast({ title: "Error al iniciar sesión", description: "Error de conexión", variant: "destructive" });
     }
+
+    setLoading(false);
   };
 
   return (
