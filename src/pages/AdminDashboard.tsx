@@ -12,7 +12,7 @@ import { PaymentCalendar } from "@/components/PaymentCalendar";
 import { PaymentsList } from "@/components/PaymentsList";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Plus, Users, CalendarDays, FileText, StickyNote, Send, UserPlus, MessageSquare, ImageIcon } from "lucide-react";
+import { LogOut, Plus, Users, CalendarDays, FileText, StickyNote, Send, UserPlus, MessageSquare, ImageIcon, CheckCircle, XCircle, Clock } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { format, parseISO } from "date-fns";
@@ -58,6 +58,7 @@ interface ReceiptUpload {
   file_name: string;
   description: string;
   created_at: string;
+  status: string;
 }
 
 const tabs = [
@@ -207,6 +208,16 @@ export default function AdminDashboard() {
   const handleViewReceipt = (payment: any) => {
     setSelectedReceipt(payment);
     setReceiptOpen(true);
+  };
+
+  const handleUpdateReceiptStatus = async (receiptId: string, newStatus: string) => {
+    const { error } = await supabase.from("payment_receipts").update({ status: newStatus }).eq("id", receiptId);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: newStatus === "confirmado" ? "Comprobante confirmado" : "Comprobante rechazado" });
+      setClientReceipts(prev => prev.map(r => r.id === receiptId ? { ...r, status: newStatus } : r));
+    }
   };
 
   const handleCalendarDaySelect = (day: Date) => {
@@ -384,12 +395,30 @@ export default function AdminDashboard() {
                           )}
                         </button>
                         <div className="p-3">
-                          <Badge variant="secondary" className="mb-1">{clientMap[r.user_id] || "Cliente"}</Badge>
+                          <div className="flex items-center justify-between mb-1">
+                            <Badge variant="secondary">{clientMap[r.user_id] || "Cliente"}</Badge>
+                            <Badge variant={r.status === "confirmado" ? "default" : r.status === "rechazado" ? "destructive" : "secondary"}>
+                              {r.status === "confirmado" && <CheckCircle className="h-3 w-3 mr-1" />}
+                              {r.status === "pendiente" && <Clock className="h-3 w-3 mr-1" />}
+                              {r.status === "rechazado" && <XCircle className="h-3 w-3 mr-1" />}
+                              {r.status}
+                            </Badge>
+                          </div>
                           <p className="text-sm font-medium truncate">{r.file_name}</p>
                           {r.description && <p className="text-xs text-muted-foreground truncate">{r.description}</p>}
                           <span className="text-[11px] text-muted-foreground">
                             {new Date(r.created_at).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" })}
                           </span>
+                          {r.status === "pendiente" && (
+                            <div className="flex gap-2 mt-2">
+                              <Button size="sm" className="flex-1" onClick={() => handleUpdateReceiptStatus(r.id, "confirmado")}>
+                                <CheckCircle className="mr-1 h-3.5 w-3.5" /> Confirmar
+                              </Button>
+                              <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleUpdateReceiptStatus(r.id, "rechazado")}>
+                                <XCircle className="mr-1 h-3.5 w-3.5" /> Rechazar
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
