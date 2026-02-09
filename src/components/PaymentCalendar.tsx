@@ -15,24 +15,30 @@ interface Payment {
 interface Props {
   payments: Payment[];
   onDaySelect?: (date: Date) => void;
+  noteDates?: string[]; // yyyy-MM-dd strings
 }
 
-export function PaymentCalendar({ payments, onDaySelect }: Props) {
+export function PaymentCalendar({ payments, onDaySelect, noteDates = [] }: Props) {
   const [selectedDay, setSelectedDay] = useState<Date | undefined>();
 
   const paymentDates = payments.map(p => parseISO(p.payment_date));
+  const noteDatesParsed = noteDates.map(d => parseISO(d));
 
   const handleSelect = (day: Date | undefined) => {
     setSelectedDay(day);
     if (day && onDaySelect) onDaySelect(day);
   };
 
-  const modifiers = { payment: paymentDates };
+  const modifiers = { payment: paymentDates, note: noteDatesParsed };
   const modifiersStyles = {
     payment: {
-      backgroundColor: "hsl(217 91% 50% / 0.15)",
+      backgroundColor: "hsl(var(--primary) / 0.15)",
       borderRadius: "50%",
       fontWeight: "bold" as const,
+    },
+    note: {
+      border: "2px solid hsl(var(--accent-foreground) / 0.4)",
+      borderRadius: "50%",
     },
   };
 

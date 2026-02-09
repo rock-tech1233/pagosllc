@@ -4,28 +4,83 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { PaymentCalendar } from "@/components/PaymentCalendar";
 import { PaymentsList } from "@/components/PaymentsList";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
-import { LogOut, CalendarDays, List } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { LogOut, CalendarDays, List, Save } from "lucide-react";
+import { format, parseISO } from "date-fns";
+import { es } from "date-fns/locale";
 
 export default function ClientDashboard() {
   const { user, profile, signOut } = useAuth();
+  const { toast } = useToast();
   const [payments, setPayments] = useState<any[]>([]);
   const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
   const [receiptOpen, setReceiptOpen] = useState(false);
 
+  // Client notes
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [noteContent, setNoteContent] = useState("");
+  const [noteId, setNoteId] = useState<string | null>(null);
+  const [savingNote, setSavingNote] = useState(false);
+  const [notes, setNotes] = useState<Record<string, { id: string; content: string }>>({});
+
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from("payments")
-      .select("*")
-      .eq("client_id", user.id)
-      .order("payment_date", { ascending: false })
-      .then(({ data }) => setPayments(data ?? []));
+    Promise.all([
+      supabase.from("payments").select("*").eq("client_id", user.id).order("payment_date", { ascending: false }),
+      supabase.from("client_notes").select("*").eq("user_id", user.id),
+    ]).then(([paymentsRes, notesRes]) => {
+      setPayments(paymentsRes.data ?? []);
+      const notesMap: Record<string, { id: string; content: string }> = {};
+      (notesRes.data ?? []).forEach((n: any) => {
+        notesMap[n.note_date] = { id: n.id, content: n.content };
+      });
+      setNotes(notesMap);
+    });
   }, [user]);
 
   const enrichedPayments = payments.map(p => ({ ...p, client_name: profile?.full_name ?? "" }));
+
+  const handleDaySelect = (day: Date) => {
+    setSelectedDay(day);
+    const key = format(day, "yyyy-MM-dd");
+    const existing = notes[key];
+    setNoteContent(existing?.content ?? "");
+    setNoteId(existing?.id ?? null);
+  };
+
+  const handleSaveNote = async () => {
+    if (!user || !selectedDay) return;
+    setSavingNote(true);
+    const key = format(selectedDay, "yyyy-MM-dd");
+
+    if (noteId) {
+      if (noteContent.trim()) {
+        await supabase.from("client_notes").update({ content: noteContent.trim() }).eq("id", noteId);
+        setNotes(prev => ({ ...prev, [key]: { id: noteId, content: noteContent.trim() } }));
+      } else {
+        await supabase.from("client_notes").delete().eq("id", noteId);
+        setNotes(prev => { const n = { ...prev }; delete n[key]; return n; });
+        setNoteId(null);
+      }
+    } else if (noteContent.trim()) {
+      const { data } = await supabase.from("client_notes").insert({
+        user_id: user.id,
+        note_date: key,
+        content: noteContent.trim(),
+      }).select("id").single();
+      if (data) {
+        setNoteId(data.id);
+        setNotes(prev => ({ ...prev, [key]: { id: data.id, content: noteContent.trim() } }));
+      }
+    }
+
+    setSavingNote(false);
+    toast({ title: "Nota guardada" });
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -52,7 +107,23 @@ export default function ClientDashboard() {
             <Card>
               <CardHeader><CardTitle>Mi Calendario de Pagos</CardTitle></CardHeader>
               <CardContent>
-                <PaymentCalendar payments={enrichedPayments} />
+                <PaymentCalendar payments={enrichedPayments} onDaySelect={handleDaySelect} noteDates={Object.keys(notes)} />
+                {selectedDay && (
+                  <div className="mt-4 space-y-2 border-t pt-4">
+                    <p className="text-sm font-medium">
+                      Mi nota — {format(selectedDay, "d 'de' MMMM yyyy", { locale: es })}
+                    </p>
+                    <Textarea
+                      placeholder="Escribe una nota para este día..."
+                      value={noteContent}
+                      onChange={e => setNoteContent(e.target.value)}
+                      rows={3}
+                    />
+                    <Button size="sm" onClick={handleSaveNote} disabled={savingNote}>
+                      <Save className="mr-2 h-4 w-4" /> Guardar nota
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
