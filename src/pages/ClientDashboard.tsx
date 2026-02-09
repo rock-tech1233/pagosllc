@@ -5,13 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { PaymentCalendar } from "@/components/PaymentCalendar";
-import { PaymentsList } from "@/components/PaymentsList";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, CalendarDays, List, Save } from "lucide-react";
+import { LogOut, CalendarDays, FileText, StickyNote, Save, Printer } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+
+interface AdminNote {
+  id: string;
+  content: string;
+  created_at: string;
+}
 
 export default function ClientDashboard() {
   const { user, profile, signOut } = useAuth();
@@ -19,6 +26,7 @@ export default function ClientDashboard() {
   const [payments, setPayments] = useState<any[]>([]);
   const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [adminNotes, setAdminNotes] = useState<AdminNote[]>([]);
 
   // Client notes
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
@@ -32,13 +40,15 @@ export default function ClientDashboard() {
     Promise.all([
       supabase.from("payments").select("*").eq("client_id", user.id).order("payment_date", { ascending: false }),
       supabase.from("client_notes").select("*").eq("user_id", user.id),
-    ]).then(([paymentsRes, notesRes]) => {
+      supabase.from("admin_client_notes").select("*").eq("client_id", user.id).order("created_at", { ascending: false }),
+    ]).then(([paymentsRes, notesRes, adminNotesRes]) => {
       setPayments(paymentsRes.data ?? []);
       const notesMap: Record<string, { id: string; content: string }> = {};
       (notesRes.data ?? []).forEach((n: any) => {
         notesMap[n.note_date] = { id: n.id, content: n.content };
       });
       setNotes(notesMap);
+      setAdminNotes(adminNotesRes.data ?? []);
     });
   }, [user]);
 
@@ -82,12 +92,17 @@ export default function ClientDashboard() {
     toast({ title: "Nota guardada" });
   };
 
+  const handleViewReceipt = (payment: any) => {
+    setSelectedReceipt(payment);
+    setReceiptOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
           <div>
-            <h1 className="text-xl font-bold">Mis Pagos</h1>
+            <h1 className="text-xl font-bold">Mi Perfil</h1>
             {profile?.full_name && <p className="text-sm text-muted-foreground">Hola, {profile.full_name}</p>}
           </div>
           <Button variant="ghost" size="sm" onClick={signOut}>
@@ -97,15 +112,79 @@ export default function ClientDashboard() {
       </header>
 
       <main className="mx-auto max-w-4xl space-y-6 p-4">
-        <Tabs defaultValue="calendar">
-          <TabsList>
+        <Tabs defaultValue="invoices">
+          <TabsList className="flex-wrap">
+            <TabsTrigger value="invoices"><FileText className="mr-1 h-4 w-4" /> Mis Facturas</TabsTrigger>
+            <TabsTrigger value="work"><StickyNote className="mr-1 h-4 w-4" /> Trabajos Realizados</TabsTrigger>
             <TabsTrigger value="calendar"><CalendarDays className="mr-1 h-4 w-4" /> Mi Calendario</TabsTrigger>
-            <TabsTrigger value="list"><List className="mr-1 h-4 w-4" /> Mi Historial</TabsTrigger>
           </TabsList>
 
+          {/* FACTURAS - permanentes, no se pueden borrar */}
+          <TabsContent value="invoices">
+            <Card>
+              <CardHeader><CardTitle>Mis Facturas</CardTitle></CardHeader>
+              <CardContent>
+                {payments.length === 0 ? (
+                  <p className="py-8 text-center text-muted-foreground">No tienes facturas aún.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {payments.map(p => (
+                      <div key={p.id} className="rounded-lg border p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-mono text-muted-foreground">{p.receipt_number}</span>
+                          <Badge variant="default">Pagado</Badge>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">Fecha: </span>
+                            <span className="font-medium">{format(parseISO(p.payment_date), "d 'de' MMMM yyyy", { locale: es })}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-2xl font-bold">${p.amount.toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <p className="text-sm mt-1"><span className="text-muted-foreground">Concepto: </span>{p.concept}</p>
+                        {p.notes && <p className="text-sm text-muted-foreground mt-1">Nota: {p.notes}</p>}
+                        <Separator className="my-3" />
+                        <Button size="sm" variant="outline" onClick={() => handleViewReceipt({ ...p, client_name: profile?.full_name })}>
+                          <Printer className="mr-2 h-4 w-4" /> Ver / Imprimir Factura
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* TRABAJOS REALIZADOS - notas del admin */}
+          <TabsContent value="work">
+            <Card>
+              <CardHeader><CardTitle>Trabajos Realizados</CardTitle></CardHeader>
+              <CardContent>
+                {adminNotes.length === 0 ? (
+                  <p className="py-8 text-center text-muted-foreground">No hay registros de trabajos aún.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {adminNotes.map(n => (
+                      <div key={n.id} className="rounded-md border p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <Badge variant="secondary">Trabajo realizado</Badge>
+                          <span className="text-xs text-muted-foreground">{new Date(n.created_at).toLocaleDateString("es", { day: "numeric", month: "long", year: "numeric" })}</span>
+                        </div>
+                        <p className="text-sm">{n.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* CALENDARIO con notas personales del cliente */}
           <TabsContent value="calendar">
             <Card>
-              <CardHeader><CardTitle>Mi Calendario de Pagos</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Mi Calendario</CardTitle></CardHeader>
               <CardContent>
                 <PaymentCalendar payments={enrichedPayments} onDaySelect={handleDaySelect} noteDates={Object.keys(notes)} />
                 {selectedDay && (
@@ -124,15 +203,6 @@ export default function ClientDashboard() {
                     </Button>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="list">
-            <Card>
-              <CardHeader><CardTitle>Mi Historial de Pagos</CardTitle></CardHeader>
-              <CardContent>
-                <PaymentsList payments={enrichedPayments} onViewReceipt={(p) => { setSelectedReceipt(p); setReceiptOpen(true); }} />
               </CardContent>
             </Card>
           </TabsContent>
