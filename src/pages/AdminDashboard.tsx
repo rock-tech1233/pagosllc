@@ -13,6 +13,7 @@ import { PaymentsList } from "@/components/PaymentsList";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
 import { LogOut, Plus, Users, CalendarDays, List, UserPlus, FileText, StickyNote, Send } from "lucide-react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface ClientProfile {
   user_id: string;
@@ -165,10 +166,13 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <h1 className="text-xl font-bold">Panel de Administración</h1>
-          <Button variant="ghost" size="sm" onClick={signOut}>
-            <LogOut className="mr-2 h-4 w-4" /> Salir
-          </Button>
+          <h1 className="text-xl font-bold">Pago LLC — Admin</h1>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button variant="ghost" size="sm" onClick={signOut}>
+              <LogOut className="mr-2 h-4 w-4" /> Salir
+            </Button>
+          </div>
         </div>
       </header>
 
