@@ -12,7 +12,7 @@ import { PaymentCalendar } from "@/components/PaymentCalendar";
 import { PaymentsList } from "@/components/PaymentsList";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Plus, Users, CalendarDays, List, UserPlus } from "lucide-react";
+import { LogOut, Plus, Users, CalendarDays, List, UserPlus, FileText, StickyNote, Send } from "lucide-react";
 
 interface ClientProfile {
   user_id: string;
@@ -29,6 +29,13 @@ interface PaymentRow {
   receipt_number: string;
   status: string;
   client_id: string;
+}
+
+interface AdminNote {
+  id: string;
+  client_id: string;
+  content: string;
+  created_at: string;
 }
 
 export default function AdminDashboard() {
@@ -54,13 +61,21 @@ export default function AdminDashboard() {
   const [newClientPassword, setNewClientPassword] = useState("");
   const [creatingClient, setCreatingClient] = useState(false);
 
+  // Admin notes
+  const [adminNotes, setAdminNotes] = useState<AdminNote[]>([]);
+  const [noteClientId, setNoteClientId] = useState("");
+  const [noteContent, setNoteContent] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+
   const fetchData = async () => {
-    const [clientsRes, paymentsRes] = await Promise.all([
+    const [clientsRes, paymentsRes, notesRes] = await Promise.all([
       supabase.from("profiles").select("user_id, full_name, username"),
       supabase.from("payments").select("*").order("payment_date", { ascending: false }),
+      supabase.from("admin_client_notes").select("*").order("created_at", { ascending: false }),
     ]);
     setClients(clientsRes.data ?? []);
     setPayments(paymentsRes.data ?? []);
+    setAdminNotes(notesRes.data ?? []);
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -89,7 +104,7 @@ export default function AdminDashboard() {
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Pago registrado" });
+      toast({ title: "Pago registrado y factura generada" });
       setFormAmount("");
       setFormNotes("");
       fetchData();
@@ -101,7 +116,6 @@ export default function AdminDashboard() {
     if (!newClientName.trim() || !newClientUsername.trim() || !newClientPassword.trim()) return;
     setCreatingClient(true);
 
-    const { data: { session } } = await supabase.auth.getSession();
     const res = await supabase.functions.invoke("create-client", {
       body: {
         name: newClientName.trim(),
@@ -123,6 +137,25 @@ export default function AdminDashboard() {
     fetchData();
   };
 
+  const handleSendNote = async () => {
+    if (!noteClientId || !noteContent.trim()) return;
+    setSavingNote(true);
+
+    const { error } = await supabase.from("admin_client_notes").insert({
+      client_id: noteClientId,
+      content: noteContent.trim(),
+    });
+
+    setSavingNote(false);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Nota enviada al cliente" });
+      setNoteContent("");
+      fetchData();
+    }
+  };
+
   const handleViewReceipt = (payment: any) => {
     setSelectedReceipt(payment);
     setReceiptOpen(true);
@@ -141,16 +174,17 @@ export default function AdminDashboard() {
 
       <main className="mx-auto max-w-6xl space-y-6 p-4">
         <Tabs defaultValue="register">
-          <TabsList>
+          <TabsList className="flex-wrap">
             <TabsTrigger value="register"><Plus className="mr-1 h-4 w-4" /> Registrar Pago</TabsTrigger>
             <TabsTrigger value="calendar"><CalendarDays className="mr-1 h-4 w-4" /> Calendario</TabsTrigger>
-            <TabsTrigger value="list"><List className="mr-1 h-4 w-4" /> Historial</TabsTrigger>
+            <TabsTrigger value="invoices"><FileText className="mr-1 h-4 w-4" /> Facturas</TabsTrigger>
+            <TabsTrigger value="notes"><StickyNote className="mr-1 h-4 w-4" /> Notas</TabsTrigger>
             <TabsTrigger value="clients"><Users className="mr-1 h-4 w-4" /> Clientes</TabsTrigger>
           </TabsList>
 
           <TabsContent value="register">
             <Card>
-              <CardHeader><CardTitle>Registrar nuevo pago</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Registrar nuevo pago (genera factura automáticamente)</CardTitle></CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmitPayment} className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
@@ -184,7 +218,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="sm:col-span-2">
                     <Button type="submit" disabled={submitting} className="w-full sm:w-auto">
-                      <Plus className="mr-2 h-4 w-4" /> Registrar Pago
+                      <Plus className="mr-2 h-4 w-4" /> Registrar Pago y Generar Factura
                     </Button>
                   </div>
                 </form>
@@ -201,11 +235,63 @@ export default function AdminDashboard() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="list">
+          <TabsContent value="invoices">
             <Card>
-              <CardHeader><CardTitle>Historial de Pagos</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Todas las Facturas (permanentes)</CardTitle></CardHeader>
               <CardContent>
                 <PaymentsList payments={enrichedPayments} showClient onViewReceipt={handleViewReceipt} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="notes">
+            <Card className="mb-6">
+              <CardHeader><CardTitle><StickyNote className="inline mr-2 h-5 w-5" />Enviar nota de trabajo al cliente</CardTitle></CardHeader>
+              <CardContent>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Cliente</Label>
+                    <Select value={noteClientId} onValueChange={setNoteClientId}>
+                      <SelectTrigger><SelectValue placeholder="Seleccionar cliente" /></SelectTrigger>
+                      <SelectContent>
+                        {clients.map(c => (
+                          <SelectItem key={c.user_id} value={c.user_id}>
+                            {c.full_name || c.username || c.user_id.slice(0, 8)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Descripción del trabajo realizado</Label>
+                    <Textarea value={noteContent} onChange={e => setNoteContent(e.target.value)} placeholder="Ej: Se realizó mantenimiento general..." rows={4} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Button onClick={handleSendNote} disabled={savingNote || !noteClientId || !noteContent.trim()}>
+                      <Send className="mr-2 h-4 w-4" /> Enviar Nota
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle>Historial de Notas</CardTitle></CardHeader>
+              <CardContent>
+                {adminNotes.length === 0 ? (
+                  <p className="text-muted-foreground">No hay notas aún.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {adminNotes.map(n => (
+                      <div key={n.id} className="rounded-md border p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-medium text-sm">{clientMap[n.client_id] || "Cliente"}</span>
+                          <span className="text-xs text-muted-foreground">{new Date(n.created_at).toLocaleDateString("es")}</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{n.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
