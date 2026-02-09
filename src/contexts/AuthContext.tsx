@@ -32,56 +32,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchUserData = async (userId: string) => {
-    const [rolesRes, profileRes] = await Promise.all([
-      supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
-      supabase.from("profiles").select("full_name, phone").eq("user_id", userId).maybeSingle(),
-    ]);
-    setRole((rolesRes.data?.role as Role) ?? "client");
-    setProfile(profileRes.data ?? null);
+    try {
+      const [rolesRes, profileRes] = await Promise.all([
+        supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
+        supabase.from("profiles").select("full_name, phone").eq("user_id", userId).maybeSingle(),
+      ]);
+      setRole((rolesRes.data?.role as Role) ?? "client");
+      setProfile(profileRes.data ?? null);
+    } catch {
+      setRole("client");
+      setProfile(null);
+    }
   };
 
   useEffect(() => {
-    let mounted = true;
+    let isMounted = true;
 
-    // Set up listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      if (!mounted) return;
-      setSession(newSession);
-      setUser(newSession?.user ?? null);
-      if (newSession?.user) {
-        await fetchUserData(newSession.user.id);
-      } else {
-        setRole(null);
-        setProfile(null);
-      }
-      if (mounted) setLoading(false);
-    });
+    // Listener for ONGOING auth changes — fire and forget, no await, no loading control
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, newSession) => {
+        if (!isMounted) return;
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
 
-    // THEN get initial session
-    supabase.auth.getSession().then(async ({ data: { session: initSession } }) => {
-      if (!mounted) return;
-      setSession(initSession);
-      setUser(initSession?.user ?? null);
-      if (initSession?.user) {
-        await fetchUserData(initSession.user.id);
+        if (newSession?.user) {
+          // Fire and forget
+          fetchUserData(newSession.user.id);
+        } else {
+          setRole(null);
+          setProfile(null);
+        }
       }
-      if (mounted) setLoading(false);
-    });
+    );
+
+    // INITIAL load — controls loading state
+    const initializeAuth = async () => {
+      try {
+        const { data: { session: initSession } } = await supabase.auth.getSession();
+        if (!isMounted) return;
+
+        setSession(initSession);
+        setUser(initSession?.user ?? null);
+
+        if (initSession?.user) {
+          await fetchUserData(initSession.user.id);
+        }
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    initializeAuth();
 
     return () => {
-      mounted = false;
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, []);
 
   const signOut = async () => {
-    setLoading(true);
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
     setRole(null);
     setProfile(null);
-    setLoading(false);
   };
 
   return (
