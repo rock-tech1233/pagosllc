@@ -12,7 +12,7 @@ import { PaymentCalendar } from "@/components/PaymentCalendar";
 import { PaymentsList } from "@/components/PaymentsList";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Plus, Users, CalendarDays, FileText, StickyNote, Send, UserPlus, MessageSquare } from "lucide-react";
+import { LogOut, Plus, Users, CalendarDays, FileText, StickyNote, Send, UserPlus, MessageSquare, ImageIcon } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { format, parseISO } from "date-fns";
@@ -51,10 +51,20 @@ interface ClientNote {
   created_at: string;
 }
 
+interface ReceiptUpload {
+  id: string;
+  user_id: string;
+  file_url: string;
+  file_name: string;
+  description: string;
+  created_at: string;
+}
+
 const tabs = [
   { id: "register", label: "Pago", icon: Plus },
   { id: "calendar", label: "Calendario", icon: CalendarDays },
   { id: "invoices", label: "Facturas", icon: FileText },
+  { id: "receipts", label: "Comprobantes", icon: ImageIcon },
   { id: "notes", label: "Notas", icon: StickyNote },
   { id: "clients", label: "Clientes", icon: Users },
 ] as const;
@@ -96,17 +106,23 @@ export default function AdminDashboard() {
   const [clientNotes, setClientNotes] = useState<ClientNote[]>([]);
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<Date | null>(null);
 
+  // Client receipt uploads
+  const [clientReceipts, setClientReceipts] = useState<ReceiptUpload[]>([]);
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
+
   const fetchData = async () => {
-    const [clientsRes, paymentsRes, notesRes, clientNotesRes] = await Promise.all([
+    const [clientsRes, paymentsRes, notesRes, clientNotesRes, receiptsRes] = await Promise.all([
       supabase.from("profiles").select("user_id, full_name, username"),
       supabase.from("payments").select("*").order("payment_date", { ascending: false }),
       supabase.from("admin_client_notes").select("*").order("created_at", { ascending: false }),
       supabase.from("client_notes").select("*").order("created_at", { ascending: false }),
+      supabase.from("payment_receipts").select("*").order("created_at", { ascending: false }),
     ]);
     setClients(clientsRes.data ?? []);
     setPayments(paymentsRes.data ?? []);
     setAdminNotes(notesRes.data ?? []);
     setClientNotes(clientNotesRes.data ?? []);
+    setClientReceipts((receiptsRes.data as any[]) ?? []);
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -343,6 +359,60 @@ export default function AdminDashboard() {
               <PaymentsList payments={enrichedPayments} showClient onViewReceipt={handleViewReceipt} />
             </CardContent>
           </Card>
+        )}
+
+        {activeTab === "receipts" && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base sm:text-lg">Comprobantes de Pago de Clientes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {clientReceipts.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">Ningún cliente ha subido comprobantes aún.</p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {clientReceipts.map(r => (
+                      <div key={r.id} className="rounded-lg border overflow-hidden">
+                        <button className="w-full" onClick={() => setReceiptPreviewUrl(receiptPreviewUrl === r.file_url ? null : r.file_url)}>
+                          {r.file_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                            <img src={r.file_url} alt={r.file_name} className="w-full h-40 object-cover" />
+                          ) : (
+                            <div className="w-full h-40 flex items-center justify-center bg-muted">
+                              <FileText className="h-10 w-10 text-muted-foreground" />
+                            </div>
+                          )}
+                        </button>
+                        <div className="p-3">
+                          <Badge variant="secondary" className="mb-1">{clientMap[r.user_id] || "Cliente"}</Badge>
+                          <p className="text-sm font-medium truncate">{r.file_name}</p>
+                          {r.description && <p className="text-xs text-muted-foreground truncate">{r.description}</p>}
+                          <span className="text-[11px] text-muted-foreground">
+                            {new Date(r.created_at).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" })}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {receiptPreviewUrl && (
+              <Card>
+                <CardContent className="p-2">
+                  {receiptPreviewUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                    <img src={receiptPreviewUrl} alt="Preview" className="w-full rounded-md" />
+                  ) : (
+                    <iframe src={receiptPreviewUrl} className="w-full h-[500px] rounded-md" title="PDF Preview" />
+                  )}
+                  <Button variant="outline" size="sm" className="mt-2 w-full" onClick={() => setReceiptPreviewUrl(null)}>
+                    Cerrar vista previa
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         )}
 
         {activeTab === "notes" && (

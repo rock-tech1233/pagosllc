@@ -6,10 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { PaymentCalendar } from "@/components/PaymentCalendar";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, CalendarDays, FileText, StickyNote, Save, Printer } from "lucide-react";
+import { LogOut, CalendarDays, FileText, StickyNote, Save, Printer, Upload, ImageIcon, Trash2 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { format, parseISO } from "date-fns";
@@ -22,9 +24,18 @@ interface AdminNote {
   created_at: string;
 }
 
+interface ReceiptUpload {
+  id: string;
+  file_url: string;
+  file_name: string;
+  description: string;
+  created_at: string;
+}
+
 const tabs = [
   { id: "invoices", label: "Facturas", icon: FileText },
   { id: "work", label: "Trabajos", icon: StickyNote },
+  { id: "receipts", label: "Comprobantes", icon: Upload },
   { id: "calendar", label: "Calendario", icon: CalendarDays },
 ] as const;
 
@@ -48,13 +59,20 @@ export default function ClientDashboard() {
   const [savingNote, setSavingNote] = useState(false);
   const [notes, setNotes] = useState<Record<string, { id: string; content: string }>>({});
 
+  // Receipt uploads
+  const [uploads, setUploads] = useState<ReceiptUpload[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadDesc, setUploadDesc] = useState("");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
   useEffect(() => {
     if (!user) return;
     Promise.all([
       supabase.from("payments").select("*").eq("client_id", user.id).order("payment_date", { ascending: false }),
       supabase.from("client_notes").select("*").eq("user_id", user.id),
       supabase.from("admin_client_notes").select("*").eq("client_id", user.id).order("created_at", { ascending: false }),
-    ]).then(([paymentsRes, notesRes, adminNotesRes]) => {
+      supabase.from("payment_receipts").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+    ]).then(([paymentsRes, notesRes, adminNotesRes, uploadsRes]) => {
       setPayments(paymentsRes.data ?? []);
       const notesMap: Record<string, { id: string; content: string }> = {};
       (notesRes.data ?? []).forEach((n: any) => {
@@ -62,6 +80,7 @@ export default function ClientDashboard() {
       });
       setNotes(notesMap);
       setAdminNotes(adminNotesRes.data ?? []);
+      setUploads((uploadsRes.data as any[]) ?? []);
     });
   }, [user]);
 
@@ -79,7 +98,6 @@ export default function ClientDashboard() {
     if (!user || !selectedDay) return;
     setSavingNote(true);
     const key = format(selectedDay, "yyyy-MM-dd");
-
     if (noteId) {
       if (noteContent.trim()) {
         await supabase.from("client_notes").update({ content: noteContent.trim() }).eq("id", noteId);
@@ -100,7 +118,6 @@ export default function ClientDashboard() {
         setNotes(prev => ({ ...prev, [key]: { id: data.id, content: noteContent.trim() } }));
       }
     }
-
     setSavingNote(false);
     toast({ title: "Nota guardada" });
   };
@@ -110,9 +127,69 @@ export default function ClientDashboard() {
     setReceiptOpen(true);
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      toast({ title: "Archivo muy grande", description: "El máximo es 5MB", variant: "destructive" });
+      return;
+    }
+
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      toast({ title: "Tipo no permitido", description: "Solo imágenes o PDF", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    const ext = file.name.split(".").pop();
+    const filePath = `${user.id}/${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("payment-receipts")
+      .upload(filePath, file);
+
+    if (uploadError) {
+      toast({ title: "Error al subir", description: uploadError.message, variant: "destructive" });
+      setUploading(false);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage.from("payment-receipts").getPublicUrl(filePath);
+
+    const { data: row, error: insertError } = await supabase.from("payment_receipts").insert({
+      user_id: user.id,
+      file_url: urlData.publicUrl,
+      file_name: file.name,
+      description: uploadDesc.trim(),
+    }).select().single();
+
+    setUploading(false);
+    if (insertError) {
+      toast({ title: "Error", description: insertError.message, variant: "destructive" });
+    } else {
+      toast({ title: "Comprobante subido correctamente" });
+      setUploads(prev => [row as any, ...prev]);
+      setUploadDesc("");
+      e.target.value = "";
+    }
+  };
+
+  const handleDeleteUpload = async (upload: ReceiptUpload) => {
+    // Extract path from URL
+    const urlParts = upload.file_url.split("/payment-receipts/");
+    const storagePath = urlParts[1];
+    if (storagePath) {
+      await supabase.storage.from("payment-receipts").remove([storagePath]);
+    }
+    await supabase.from("payment_receipts").delete().eq("id", upload.id);
+    setUploads(prev => prev.filter(u => u.id !== upload.id));
+    toast({ title: "Comprobante eliminado" });
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
       <header className="border-b bg-card sticky top-0 z-30">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
           <div className="min-w-0">
@@ -131,7 +208,6 @@ export default function ClientDashboard() {
         </div>
       </header>
 
-      {/* Desktop tab bar */}
       {!isMobile && (
         <div className="border-b bg-card">
           <div className="mx-auto flex max-w-4xl gap-1 px-4 py-1">
@@ -154,7 +230,6 @@ export default function ClientDashboard() {
         </div>
       )}
 
-      {/* Main content */}
       <main className={cn("mx-auto w-full max-w-4xl flex-1 p-4 space-y-4", isMobile && "pb-20")}>
         {activeTab === "invoices" && (
           <Card>
@@ -220,6 +295,112 @@ export default function ClientDashboard() {
           </Card>
         )}
 
+        {activeTab === "receipts" && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base sm:text-lg">Subir Comprobante de Pago</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4">
+                  <div className="space-y-2">
+                    <Label>Descripción (opcional)</Label>
+                    <Input
+                      value={uploadDesc}
+                      onChange={e => setUploadDesc(e.target.value)}
+                      placeholder="Ej: Pago de enero, transferencia..."
+                    />
+                  </div>
+                  <div>
+                    <Label className="cursor-pointer">
+                      <div className={cn(
+                        "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors",
+                        "hover:border-primary/50 hover:bg-accent/50",
+                        uploading && "opacity-50 pointer-events-none"
+                      )}>
+                        <Upload className="h-8 w-8 text-muted-foreground mb-2" />
+                        <p className="text-sm font-medium">
+                          {uploading ? "Subiendo..." : "Toca para seleccionar archivo"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">Imagen o PDF (máx. 5MB)</p>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        className="hidden"
+                        onChange={handleFileUpload}
+                        disabled={uploading}
+                      />
+                    </Label>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base sm:text-lg">Mis Comprobantes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {uploads.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">No has subido comprobantes aún.</p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {uploads.map(u => (
+                      <div key={u.id} className="rounded-lg border overflow-hidden">
+                        <button
+                          className="w-full"
+                          onClick={() => setPreviewUrl(previewUrl === u.file_url ? null : u.file_url)}
+                        >
+                          {u.file_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                            <img
+                              src={u.file_url}
+                              alt={u.file_name}
+                              className="w-full h-40 object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-40 flex items-center justify-center bg-muted">
+                              <FileText className="h-10 w-10 text-muted-foreground" />
+                            </div>
+                          )}
+                        </button>
+                        <div className="p-3">
+                          <p className="text-sm font-medium truncate">{u.file_name}</p>
+                          {u.description && <p className="text-xs text-muted-foreground truncate">{u.description}</p>}
+                          <div className="flex items-center justify-between mt-2">
+                            <span className="text-[11px] text-muted-foreground">
+                              {new Date(u.created_at).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" })}
+                            </span>
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => handleDeleteUpload(u)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Full preview */}
+            {previewUrl && (
+              <Card>
+                <CardContent className="p-2">
+                  {previewUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                    <img src={previewUrl} alt="Preview" className="w-full rounded-md" />
+                  ) : (
+                    <iframe src={previewUrl} className="w-full h-[500px] rounded-md" title="PDF Preview" />
+                  )}
+                  <Button variant="outline" size="sm" className="mt-2 w-full" onClick={() => setPreviewUrl(null)}>
+                    Cerrar vista previa
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
         {activeTab === "calendar" && (
           <div className="space-y-4">
             <Card>
@@ -230,7 +411,6 @@ export default function ClientDashboard() {
                 <PaymentCalendar payments={enrichedPayments} onDaySelect={handleDaySelect} noteDates={Object.keys(notes)} />
               </CardContent>
             </Card>
-
             {selectedDay && (
               <Card>
                 <CardHeader className="pb-3">
@@ -255,7 +435,6 @@ export default function ClientDashboard() {
         )}
       </main>
 
-      {/* Mobile bottom navigation */}
       {isMobile && (
         <nav className="fixed bottom-0 inset-x-0 z-40 border-t bg-card/95 backdrop-blur-sm">
           <div className="flex items-center justify-around py-1.5">
@@ -264,10 +443,8 @@ export default function ClientDashboard() {
                 key={t.id}
                 onClick={() => setActiveTab(t.id)}
                 className={cn(
-                  "flex flex-col items-center gap-0.5 px-3 py-1 rounded-md text-[10px] font-medium transition-colors min-w-[60px]",
-                  activeTab === t.id
-                    ? "text-primary"
-                    : "text-muted-foreground"
+                  "flex flex-col items-center gap-0.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors min-w-[52px]",
+                  activeTab === t.id ? "text-primary" : "text-muted-foreground"
                 )}
               >
                 <t.icon className={cn("h-5 w-5", activeTab === t.id && "stroke-[2.5]")} />
