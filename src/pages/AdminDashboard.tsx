@@ -101,25 +101,21 @@ export default function AdminDashboard() {
     if (!newClientName.trim() || !newClientUsername.trim() || !newClientPassword.trim()) return;
     setCreatingClient(true);
 
-    const email = `${newClientUsername.toLowerCase().trim()}@app.internal`;
-    
-    // Create auth user
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password: newClientPassword,
-      options: { data: { full_name: newClientName.trim() } },
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await supabase.functions.invoke("create-client", {
+      body: {
+        name: newClientName.trim(),
+        username: newClientUsername.toLowerCase().trim(),
+        password: newClientPassword,
+      },
     });
 
-    if (authError || !authData.user) {
-      setCreatingClient(false);
-      toast({ title: "Error al crear cliente", description: authError?.message || "Error desconocido", variant: "destructive" });
+    setCreatingClient(false);
+    if (res.error || res.data?.error) {
+      toast({ title: "Error al crear cliente", description: res.data?.error || res.error?.message || "Error desconocido", variant: "destructive" });
       return;
     }
 
-    // Update the profile with username
-    await supabase.from("profiles").update({ username: newClientUsername.toLowerCase().trim() }).eq("user_id", authData.user.id);
-
-    setCreatingClient(false);
     toast({ title: "Cliente creado", description: `${newClientName} puede iniciar sesión con usuario: ${newClientUsername}` });
     setNewClientName("");
     setNewClientUsername("");
