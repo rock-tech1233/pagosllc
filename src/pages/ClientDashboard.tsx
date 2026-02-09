@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { PaymentCalendar } from "@/components/PaymentCalendar";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, CalendarDays, FileText, StickyNote, Save, Printer, Upload, ImageIcon, Trash2 } from "lucide-react";
+import { LogOut, CalendarDays, FileText, StickyNote, Save, Printer, Upload, ImageIcon, Trash2, ExternalLink, CreditCard, CheckCircle, Clock } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { format, parseISO } from "date-fns";
@@ -30,9 +30,11 @@ interface ReceiptUpload {
   file_name: string;
   description: string;
   created_at: string;
+  status: string;
 }
 
 const tabs = [
+  { id: "pay", label: "Pagar", icon: CreditCard },
   { id: "invoices", label: "Facturas", icon: FileText },
   { id: "work", label: "Trabajos", icon: StickyNote },
   { id: "receipts", label: "Comprobantes", icon: Upload },
@@ -45,7 +47,7 @@ export default function ClientDashboard() {
   const { user, profile, signOut } = useAuth();
   const { toast } = useToast();
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = useState<TabId>("invoices");
+  const [activeTab, setActiveTab] = useState<TabId>("pay");
 
   const [payments, setPayments] = useState<any[]>([]);
   const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
@@ -231,6 +233,26 @@ export default function ClientDashboard() {
       )}
 
       <main className={cn("mx-auto w-full max-w-4xl flex-1 p-4 space-y-4", isMobile && "pb-20")}>
+        {activeTab === "pay" && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base sm:text-lg">Realizar Pago</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Haz clic en el botón para realizar tu pago a través de Wise. Una vez completado, sube tu comprobante en la pestaña "Comprobantes" y presiona "Ya pagué" para notificar al administrador.
+              </p>
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={() => window.open("https://wise.com/pay/me/rockstuarf", "_blank")}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" /> Pagar con Wise
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {activeTab === "invoices" && (
           <Card>
             <CardHeader className="pb-3">
@@ -365,7 +387,14 @@ export default function ClientDashboard() {
                           )}
                         </button>
                         <div className="p-3">
-                          <p className="text-sm font-medium truncate">{u.file_name}</p>
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-sm font-medium truncate">{u.file_name}</p>
+                            <Badge variant={u.status === "confirmado" ? "default" : u.status === "rechazado" ? "destructive" : "secondary"}>
+                              {u.status === "confirmado" && <CheckCircle className="h-3 w-3 mr-1" />}
+                              {u.status === "pendiente" && <Clock className="h-3 w-3 mr-1" />}
+                              {u.status}
+                            </Badge>
+                          </div>
                           {u.description && <p className="text-xs text-muted-foreground truncate">{u.description}</p>}
                           <div className="flex items-center justify-between mt-2">
                             <span className="text-[11px] text-muted-foreground">
