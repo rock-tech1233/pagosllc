@@ -12,11 +12,12 @@ import { PaymentCalendar } from "@/components/PaymentCalendar";
 import { PaymentsList } from "@/components/PaymentsList";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Plus, Users, CalendarDays, List } from "lucide-react";
+import { LogOut, Plus, Users, CalendarDays, List, UserPlus } from "lucide-react";
 
 interface ClientProfile {
   user_id: string;
   full_name: string;
+  username: string | null;
 }
 
 interface PaymentRow {
@@ -39,7 +40,7 @@ export default function AdminDashboard() {
   const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
   const [receiptOpen, setReceiptOpen] = useState(false);
 
-  // Form state
+  // Payment form
   const [formClientId, setFormClientId] = useState("");
   const [formAmount, setFormAmount] = useState("");
   const [formDate, setFormDate] = useState(new Date().toISOString().split("T")[0]);
@@ -47,9 +48,15 @@ export default function AdminDashboard() {
   const [formNotes, setFormNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // New client form
+  const [newClientName, setNewClientName] = useState("");
+  const [newClientUsername, setNewClientUsername] = useState("");
+  const [newClientPassword, setNewClientPassword] = useState("");
+  const [creatingClient, setCreatingClient] = useState(false);
+
   const fetchData = async () => {
     const [clientsRes, paymentsRes] = await Promise.all([
-      supabase.from("profiles").select("user_id, full_name"),
+      supabase.from("profiles").select("user_id, full_name, username"),
       supabase.from("payments").select("*").order("payment_date", { ascending: false }),
     ]);
     setClients(clientsRes.data ?? []);
@@ -89,6 +96,37 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newClientName.trim() || !newClientUsername.trim() || !newClientPassword.trim()) return;
+    setCreatingClient(true);
+
+    const email = `${newClientUsername.toLowerCase().trim()}@app.internal`;
+    
+    // Create auth user
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email,
+      password: newClientPassword,
+      options: { data: { full_name: newClientName.trim() } },
+    });
+
+    if (authError || !authData.user) {
+      setCreatingClient(false);
+      toast({ title: "Error al crear cliente", description: authError?.message || "Error desconocido", variant: "destructive" });
+      return;
+    }
+
+    // Update the profile with username
+    await supabase.from("profiles").update({ username: newClientUsername.toLowerCase().trim() }).eq("user_id", authData.user.id);
+
+    setCreatingClient(false);
+    toast({ title: "Cliente creado", description: `${newClientName} puede iniciar sesión con usuario: ${newClientUsername}` });
+    setNewClientName("");
+    setNewClientUsername("");
+    setNewClientPassword("");
+    fetchData();
+  };
+
   const handleViewReceipt = (payment: any) => {
     setSelectedReceipt(payment);
     setReceiptOpen(true);
@@ -126,7 +164,7 @@ export default function AdminDashboard() {
                       <SelectContent>
                         {clients.map(c => (
                           <SelectItem key={c.user_id} value={c.user_id}>
-                            {c.full_name || c.user_id.slice(0, 8)}
+                            {c.full_name || c.username || c.user_id.slice(0, 8)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -177,6 +215,30 @@ export default function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="clients">
+            <Card className="mb-6">
+              <CardHeader><CardTitle><UserPlus className="inline mr-2 h-5 w-5" />Crear nuevo cliente</CardTitle></CardHeader>
+              <CardContent>
+                <form onSubmit={handleCreateClient} className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Nombre completo</Label>
+                    <Input value={newClientName} onChange={e => setNewClientName(e.target.value)} required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Usuario (para login)</Label>
+                    <Input value={newClientUsername} onChange={e => setNewClientUsername(e.target.value)} required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Contraseña</Label>
+                    <Input type="password" minLength={6} value={newClientPassword} onChange={e => setNewClientPassword(e.target.value)} required />
+                  </div>
+                  <div className="sm:col-span-3">
+                    <Button type="submit" disabled={creatingClient}>
+                      <UserPlus className="mr-2 h-4 w-4" /> Crear Cliente
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
             <Card>
               <CardHeader><CardTitle>Clientes Registrados</CardTitle></CardHeader>
               <CardContent>
@@ -186,8 +248,10 @@ export default function AdminDashboard() {
                   <div className="space-y-2">
                     {clients.map(c => (
                       <div key={c.user_id} className="flex items-center justify-between rounded-md border p-3">
-                        <span className="font-medium">{c.full_name || "Sin nombre"}</span>
-                        <span className="text-sm text-muted-foreground">{c.user_id.slice(0, 8)}...</span>
+                        <div>
+                          <span className="font-medium">{c.full_name || "Sin nombre"}</span>
+                          {c.username && <span className="ml-2 text-sm text-muted-foreground">@{c.username}</span>}
+                        </div>
                       </div>
                     ))}
                   </div>
