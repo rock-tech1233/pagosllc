@@ -11,6 +11,7 @@ import { PaymentCalendar } from "@/components/PaymentCalendar";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
 import { LogOut, CalendarDays, FileText, StickyNote, Save, Printer } from "lucide-react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -102,12 +103,15 @@ export default function ClientDashboard() {
       <header className="border-b bg-card">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
           <div>
-            <h1 className="text-xl font-bold">Mi Perfil</h1>
+            <h1 className="text-xl font-bold">Pago LLC</h1>
             {profile?.full_name && <p className="text-sm text-muted-foreground">Hola, {profile.full_name}</p>}
           </div>
-          <Button variant="ghost" size="sm" onClick={signOut}>
-            <LogOut className="mr-2 h-4 w-4" /> Salir
-          </Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button variant="ghost" size="sm" onClick={signOut}>
+              <LogOut className="mr-2 h-4 w-4" /> Salir
+            </Button>
+          </div>
         </div>
       </header>
 
