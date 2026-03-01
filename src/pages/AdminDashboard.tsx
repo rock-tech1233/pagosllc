@@ -12,7 +12,7 @@ import { PaymentCalendar } from "@/components/PaymentCalendar";
 import { PaymentsList } from "@/components/PaymentsList";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Plus, Users, CalendarDays, FileText, StickyNote, Send, UserPlus, MessageSquare, ImageIcon, CheckCircle, XCircle, Clock } from "lucide-react";
+import { LogOut, Plus, Users, CalendarDays, FileText, StickyNote, Send, UserPlus, MessageSquare, ImageIcon, CheckCircle, XCircle, Clock, CreditCard } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { format, parseISO } from "date-fns";
@@ -61,9 +61,22 @@ interface ReceiptUpload {
   status: string;
 }
 
+interface MetaAdsInvoice {
+  id: string;
+  user_id: string;
+  invoice_date: string;
+  amount: number;
+  file_url: string | null;
+  file_name: string;
+  description: string;
+  status: string;
+  created_at: string;
+}
+
 const tabs = [
   { id: "register", label: "Pago", icon: Plus },
   { id: "calendar", label: "Calendario", icon: CalendarDays },
+  { id: "meta-ads", label: "Meta Ads", icon: CreditCard },
   { id: "invoices", label: "Facturas", icon: FileText },
   { id: "receipts", label: "Comprobantes", icon: ImageIcon },
   { id: "notes", label: "Notas", icon: StickyNote },
@@ -111,19 +124,24 @@ export default function AdminDashboard() {
   const [clientReceipts, setClientReceipts] = useState<ReceiptUpload[]>([]);
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
 
+  // Meta Ads invoices
+  const [metaInvoices, setMetaInvoices] = useState<MetaAdsInvoice[]>([]);
+
   const fetchData = async () => {
-    const [clientsRes, paymentsRes, notesRes, clientNotesRes, receiptsRes] = await Promise.all([
+    const [clientsRes, paymentsRes, notesRes, clientNotesRes, receiptsRes, metaRes] = await Promise.all([
       supabase.from("profiles").select("user_id, full_name, username"),
       supabase.from("payments").select("*").order("payment_date", { ascending: false }),
       supabase.from("admin_client_notes").select("*").order("created_at", { ascending: false }),
       supabase.from("client_notes").select("*").order("created_at", { ascending: false }),
       supabase.from("payment_receipts").select("*").order("created_at", { ascending: false }),
+      supabase.from("meta_ads_invoices").select("*").order("invoice_date", { ascending: false }),
     ]);
     setClients(clientsRes.data ?? []);
     setPayments(paymentsRes.data ?? []);
     setAdminNotes(notesRes.data ?? []);
     setClientNotes(clientNotesRes.data ?? []);
     setClientReceipts((receiptsRes.data as any[]) ?? []);
+    setMetaInvoices((metaRes.data as any[]) ?? []);
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -217,6 +235,16 @@ export default function AdminDashboard() {
     } else {
       toast({ title: newStatus === "confirmado" ? "Comprobante confirmado" : "Comprobante rechazado" });
       setClientReceipts(prev => prev.map(r => r.id === receiptId ? { ...r, status: newStatus } : r));
+    }
+  };
+
+  const handleUpdateMetaStatus = async (invoiceId: string, newStatus: string) => {
+    const { error } = await supabase.from("meta_ads_invoices").update({ status: newStatus }).eq("id", invoiceId);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: newStatus === "confirmado" ? "Factura Meta confirmada" : "Factura Meta rechazada" });
+      setMetaInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, status: newStatus } : i));
     }
   };
 
@@ -359,6 +387,59 @@ export default function AdminDashboard() {
               </p>
             )}
           </div>
+        )}
+
+        {activeTab === "meta-ads" && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base sm:text-lg">Facturas Meta Ads de Clientes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {metaInvoices.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">Ningún cliente ha subido facturas de Meta Ads aún.</p>
+              ) : (
+                <div className="space-y-3">
+                  {metaInvoices.map(inv => (
+                    <div key={inv.id} className="rounded-lg border p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <Badge variant="secondary">{clientMap[inv.user_id] || "Cliente"}</Badge>
+                        <Badge variant={inv.status === "confirmado" ? "default" : inv.status === "rechazado" ? "destructive" : "secondary"}>
+                          {inv.status === "confirmado" && <CheckCircle className="h-3 w-3 mr-1" />}
+                          {inv.status === "pendiente" && <Clock className="h-3 w-3 mr-1" />}
+                          {inv.status === "rechazado" && <XCircle className="h-3 w-3 mr-1" />}
+                          {inv.status}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0">
+                          <p className="text-lg font-bold">${inv.amount.toFixed(2)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {format(parseISO(inv.invoice_date), "d MMM yyyy", { locale: es })}
+                          </p>
+                          {inv.description && <p className="text-sm text-muted-foreground truncate">{inv.description}</p>}
+                          {inv.file_name && (
+                            <a href={inv.file_url ?? "#"} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline">
+                              📎 {inv.file_name}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                      {inv.status === "pendiente" && (
+                        <div className="flex gap-2 mt-2">
+                          <Button size="sm" className="flex-1" onClick={() => handleUpdateMetaStatus(inv.id, "confirmado")}>
+                            <CheckCircle className="mr-1 h-3.5 w-3.5" /> Confirmar
+                          </Button>
+                          <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleUpdateMetaStatus(inv.id, "rechazado")}>
+                            <XCircle className="mr-1 h-3.5 w-3.5" /> Rechazar
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
 
         {activeTab === "invoices" && (
