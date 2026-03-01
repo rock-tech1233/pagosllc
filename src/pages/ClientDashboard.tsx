@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { PaymentCalendar } from "@/components/PaymentCalendar";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, CalendarDays, FileText, StickyNote, Save, Printer, Upload, ImageIcon, Trash2, ExternalLink, CreditCard, CheckCircle, Clock } from "lucide-react";
+import { LogOut, CalendarDays, FileText, StickyNote, Save, Printer, Upload, Trash2, CreditCard, CheckCircle, Clock } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { format, parseISO } from "date-fns";
@@ -33,12 +33,22 @@ interface ReceiptUpload {
   status: string;
 }
 
+interface MetaAdsInvoice {
+  id: string;
+  invoice_date: string;
+  amount: number;
+  file_url: string | null;
+  file_name: string;
+  description: string;
+  status: string;
+  created_at: string;
+}
+
 const tabs = [
-  { id: "pay", label: "Pagar", icon: CreditCard },
+  { id: "calendar", label: "Calendario", icon: CalendarDays },
   { id: "invoices", label: "Facturas", icon: FileText },
   { id: "work", label: "Trabajos", icon: StickyNote },
   { id: "receipts", label: "Comprobantes", icon: Upload },
-  { id: "calendar", label: "Calendario", icon: CalendarDays },
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
@@ -47,7 +57,7 @@ export default function ClientDashboard() {
   const { user, profile, signOut } = useAuth();
   const { toast } = useToast();
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = useState<TabId>("pay");
+  const [activeTab, setActiveTab] = useState<TabId>("calendar");
 
   const [payments, setPayments] = useState<any[]>([]);
   const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
@@ -67,6 +77,12 @@ export default function ClientDashboard() {
   const [uploadDesc, setUploadDesc] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  // Meta Ads invoices
+  const [metaInvoices, setMetaInvoices] = useState<MetaAdsInvoice[]>([]);
+  const [metaAmount, setMetaAmount] = useState("");
+  const [metaDesc, setMetaDesc] = useState("");
+  const [metaUploading, setMetaUploading] = useState(false);
+
   useEffect(() => {
     if (!user) return;
     Promise.all([
@@ -74,7 +90,8 @@ export default function ClientDashboard() {
       supabase.from("client_notes").select("*").eq("user_id", user.id),
       supabase.from("admin_client_notes").select("*").eq("client_id", user.id).order("created_at", { ascending: false }),
       supabase.from("payment_receipts").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-    ]).then(([paymentsRes, notesRes, adminNotesRes, uploadsRes]) => {
+      supabase.from("meta_ads_invoices").select("*").eq("user_id", user.id).order("invoice_date", { ascending: false }),
+    ]).then(([paymentsRes, notesRes, adminNotesRes, uploadsRes, metaRes]) => {
       setPayments(paymentsRes.data ?? []);
       const notesMap: Record<string, { id: string; content: string }> = {};
       (notesRes.data ?? []).forEach((n: any) => {
@@ -83,6 +100,7 @@ export default function ClientDashboard() {
       setNotes(notesMap);
       setAdminNotes(adminNotesRes.data ?? []);
       setUploads((uploadsRes.data as any[]) ?? []);
+      setMetaInvoices((metaRes.data as any[]) ?? []);
     });
   }, [user]);
 
@@ -133,7 +151,7 @@ export default function ClientDashboard() {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
       toast({ title: "Archivo muy grande", description: "El máximo es 5MB", variant: "destructive" });
       return;
@@ -148,10 +166,7 @@ export default function ClientDashboard() {
     const ext = file.name.split(".").pop();
     const filePath = `${user.id}/${Date.now()}.${ext}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("payment-receipts")
-      .upload(filePath, file);
-
+    const { error: uploadError } = await supabase.storage.from("payment-receipts").upload(filePath, file);
     if (uploadError) {
       toast({ title: "Error al subir", description: uploadError.message, variant: "destructive" });
       setUploading(false);
@@ -159,7 +174,6 @@ export default function ClientDashboard() {
     }
 
     const { data: urlData } = supabase.storage.from("payment-receipts").getPublicUrl(filePath);
-
     const { data: row, error: insertError } = await supabase.from("payment_receipts").insert({
       user_id: user.id,
       file_url: urlData.publicUrl,
@@ -179,7 +193,6 @@ export default function ClientDashboard() {
   };
 
   const handleDeleteUpload = async (upload: ReceiptUpload) => {
-    // Extract path from URL
     const urlParts = upload.file_url.split("/payment-receipts/");
     const storagePath = urlParts[1];
     if (storagePath) {
@@ -189,6 +202,80 @@ export default function ClientDashboard() {
     setUploads(prev => prev.filter(u => u.id !== upload.id));
     toast({ title: "Comprobante eliminado" });
   };
+
+  // Meta Ads invoice upload for selected day
+  const handleMetaInvoiceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!user || !selectedDay) return;
+    if (!metaAmount || parseFloat(metaAmount) <= 0) {
+      toast({ title: "Ingresa un monto válido", variant: "destructive" });
+      return;
+    }
+
+    setMetaUploading(true);
+    const key = format(selectedDay, "yyyy-MM-dd");
+    let fileUrl: string | null = null;
+    let fileName = "";
+
+    if (file) {
+      const maxSize = 5 * 1024 * 1024;
+      if (file.size > maxSize) {
+        toast({ title: "Archivo muy grande", description: "El máximo es 5MB", variant: "destructive" });
+        setMetaUploading(false);
+        return;
+      }
+      const ext = file.name.split(".").pop();
+      const filePath = `${user.id}/meta-ads/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("payment-receipts").upload(filePath, file);
+      if (uploadError) {
+        toast({ title: "Error al subir", description: uploadError.message, variant: "destructive" });
+        setMetaUploading(false);
+        return;
+      }
+      const { data: urlData } = supabase.storage.from("payment-receipts").getPublicUrl(filePath);
+      fileUrl = urlData.publicUrl;
+      fileName = file.name;
+    }
+
+    const { data: row, error } = await supabase.from("meta_ads_invoices").insert({
+      user_id: user.id,
+      invoice_date: key,
+      amount: parseFloat(metaAmount),
+      file_url: fileUrl,
+      file_name: fileName,
+      description: metaDesc.trim(),
+    }).select().single();
+
+    setMetaUploading(false);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Factura de Meta Ads registrada" });
+      setMetaInvoices(prev => [row as any, ...prev]);
+      setMetaAmount("");
+      setMetaDesc("");
+      if (e.target) e.target.value = "";
+    }
+  };
+
+  const handleDeleteMetaInvoice = async (invoice: MetaAdsInvoice) => {
+    if (invoice.file_url) {
+      const urlParts = invoice.file_url.split("/payment-receipts/");
+      const storagePath = urlParts[1];
+      if (storagePath) await supabase.storage.from("payment-receipts").remove([storagePath]);
+    }
+    await supabase.from("meta_ads_invoices").delete().eq("id", invoice.id);
+    setMetaInvoices(prev => prev.filter(i => i.id !== invoice.id));
+    toast({ title: "Factura eliminada" });
+  };
+
+  // Meta invoices for selected day
+  const dayMetaInvoices = selectedDay
+    ? metaInvoices.filter(i => i.invoice_date === format(selectedDay, "yyyy-MM-dd"))
+    : [];
+
+  // Dates that have meta invoices (for calendar markers)
+  const metaInvoiceDates = [...new Set(metaInvoices.map(i => i.invoice_date))];
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -233,26 +320,6 @@ export default function ClientDashboard() {
       )}
 
       <main className={cn("mx-auto w-full max-w-4xl flex-1 p-4 space-y-4", isMobile && "pb-20")}>
-        {activeTab === "pay" && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base sm:text-lg">Realizar Pago</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Haz clic en el botón para realizar tu pago a través de Wise. Una vez completado, sube tu comprobante en la pestaña "Comprobantes" y presiona "Ya pagué" para notificar al administrador.
-              </p>
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={() => window.open("https://wise.com/pay/me/rockstuarf", "_blank")}
-              >
-                <ExternalLink className="mr-2 h-4 w-4" /> Pagar con Wise
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
         {activeTab === "invoices" && (
           <Card>
             <CardHeader className="pb-3">
@@ -327,11 +394,7 @@ export default function ClientDashboard() {
                 <div className="grid gap-4">
                   <div className="space-y-2">
                     <Label>Descripción (opcional)</Label>
-                    <Input
-                      value={uploadDesc}
-                      onChange={e => setUploadDesc(e.target.value)}
-                      placeholder="Ej: Pago de enero, transferencia..."
-                    />
+                    <Input value={uploadDesc} onChange={e => setUploadDesc(e.target.value)} placeholder="Ej: Pago de enero, transferencia..." />
                   </div>
                   <div>
                     <Label className="cursor-pointer">
@@ -341,18 +404,10 @@ export default function ClientDashboard() {
                         uploading && "opacity-50 pointer-events-none"
                       )}>
                         <Upload className="h-8 w-8 text-muted-foreground mb-2" />
-                        <p className="text-sm font-medium">
-                          {uploading ? "Subiendo..." : "Toca para seleccionar archivo"}
-                        </p>
+                        <p className="text-sm font-medium">{uploading ? "Subiendo..." : "Toca para seleccionar archivo"}</p>
                         <p className="text-xs text-muted-foreground mt-1">Imagen o PDF (máx. 5MB)</p>
                       </div>
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        className="hidden"
-                        onChange={handleFileUpload}
-                        disabled={uploading}
-                      />
+                      <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileUpload} disabled={uploading} />
                     </Label>
                   </div>
                 </div>
@@ -370,16 +425,9 @@ export default function ClientDashboard() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     {uploads.map(u => (
                       <div key={u.id} className="rounded-lg border overflow-hidden">
-                        <button
-                          className="w-full"
-                          onClick={() => setPreviewUrl(previewUrl === u.file_url ? null : u.file_url)}
-                        >
+                        <button className="w-full" onClick={() => setPreviewUrl(previewUrl === u.file_url ? null : u.file_url)}>
                           {u.file_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
-                            <img
-                              src={u.file_url}
-                              alt={u.file_name}
-                              className="w-full h-40 object-cover"
-                            />
+                            <img src={u.file_url} alt={u.file_name} className="w-full h-40 object-cover" />
                           ) : (
                             <div className="w-full h-40 flex items-center justify-center bg-muted">
                               <FileText className="h-10 w-10 text-muted-foreground" />
@@ -412,7 +460,6 @@ export default function ClientDashboard() {
               </CardContent>
             </Card>
 
-            {/* Full preview */}
             {previewUrl && (
               <Card>
                 <CardContent className="p-2">
@@ -434,31 +481,128 @@ export default function ClientDashboard() {
           <div className="space-y-4">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base sm:text-lg">Mi Calendario</CardTitle>
+                <CardTitle className="text-base sm:text-lg">Calendario — Facturas Meta Ads</CardTitle>
               </CardHeader>
               <CardContent>
-                <PaymentCalendar payments={enrichedPayments} onDaySelect={handleDaySelect} noteDates={Object.keys(notes)} />
+                <PaymentCalendar
+                  payments={enrichedPayments}
+                  onDaySelect={handleDaySelect}
+                  noteDates={[...Object.keys(notes), ...metaInvoiceDates]}
+                />
               </CardContent>
             </Card>
+
             {selectedDay && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">
-                    Mi nota — {format(selectedDay, "d 'de' MMMM yyyy", { locale: es })}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Textarea
-                    placeholder="Escribe una nota para este día..."
-                    value={noteContent}
-                    onChange={e => setNoteContent(e.target.value)}
-                    rows={3}
-                  />
-                  <Button size="sm" className="mt-3 w-full sm:w-auto" onClick={handleSaveNote} disabled={savingNote}>
-                    <Save className="mr-2 h-4 w-4" /> Guardar nota
-                  </Button>
-                </CardContent>
-              </Card>
+              <>
+                {/* Meta Ads invoice upload for selected day */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">
+                      <CreditCard className="inline h-4 w-4 mr-2" />
+                      Factura Meta Ads — {format(selectedDay, "d 'de' MMMM yyyy", { locale: es })}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-3">
+                      <div className="space-y-2">
+                        <Label>Monto ($)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={metaAmount}
+                          onChange={e => setMetaAmount(e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Descripción (opcional)</Label>
+                        <Input
+                          value={metaDesc}
+                          onChange={e => setMetaDesc(e.target.value)}
+                          placeholder="Ej: Campaña diciembre, Ad Set..."
+                        />
+                      </div>
+                      <div>
+                        <Label className="cursor-pointer">
+                          <div className={cn(
+                            "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 transition-colors",
+                            "hover:border-primary/50 hover:bg-accent/50",
+                            metaUploading && "opacity-50 pointer-events-none"
+                          )}>
+                            <Upload className="h-6 w-6 text-muted-foreground mb-1" />
+                            <p className="text-sm font-medium">
+                              {metaUploading ? "Subiendo..." : "Adjuntar factura (opcional)"}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">Imagen o PDF (máx. 5MB)</p>
+                          </div>
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            className="hidden"
+                            onChange={handleMetaInvoiceUpload}
+                            disabled={metaUploading || !metaAmount}
+                          />
+                        </Label>
+                      </div>
+                      {metaAmount && (
+                        <Button
+                          className="w-full"
+                          disabled={metaUploading || !metaAmount}
+                          onClick={() => handleMetaInvoiceUpload({ target: { files: null } } as any)}
+                        >
+                          <CreditCard className="mr-2 h-4 w-4" /> Registrar sin archivo
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Invoices for this day */}
+                    {dayMetaInvoices.length > 0 && (
+                      <div className="mt-4 space-y-2">
+                        <Separator />
+                        <p className="text-sm font-medium text-muted-foreground">Facturas de este día:</p>
+                        {dayMetaInvoices.map(inv => (
+                          <div key={inv.id} className="flex items-center justify-between rounded-md border p-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold">${inv.amount.toFixed(2)}</p>
+                              {inv.description && <p className="text-xs text-muted-foreground truncate">{inv.description}</p>}
+                              {inv.file_name && <p className="text-[11px] text-muted-foreground truncate">📎 {inv.file_name}</p>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={inv.status === "confirmado" ? "default" : inv.status === "rechazado" ? "destructive" : "secondary"}>
+                                {inv.status}
+                              </Badge>
+                              <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => handleDeleteMetaInvoice(inv)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Notes section */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">
+                      Mi nota — {format(selectedDay, "d 'de' MMMM yyyy", { locale: es })}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Textarea
+                      placeholder="Escribe una nota para este día..."
+                      value={noteContent}
+                      onChange={e => setNoteContent(e.target.value)}
+                      rows={3}
+                    />
+                    <Button size="sm" className="mt-3 w-full sm:w-auto" onClick={handleSaveNote} disabled={savingNote}>
+                      <Save className="mr-2 h-4 w-4" /> Guardar nota
+                    </Button>
+                  </CardContent>
+                </Card>
+              </>
             )}
           </div>
         )}

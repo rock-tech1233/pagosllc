@@ -65,6 +65,45 @@ export type Database = {
         }
         Relationships: []
       }
+      meta_ads_invoices: {
+        Row: {
+          amount: number
+          created_at: string
+          description: string | null
+          file_name: string | null
+          file_url: string | null
+          id: string
+          invoice_date: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          description?: string | null
+          file_name?: string | null
+          file_url?: string | null
+          id?: string
+          invoice_date: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          description?: string | null
+          file_name?: string | null
+          file_url?: string | null
+          id?: string
+          invoice_date?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       payment_receipts: {
         Row: {
           created_at: string
