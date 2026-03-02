@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { Printer, Download } from "lucide-react";
+import { Printer, Download, CheckCircle } from "lucide-react";
 import { useRef } from "react";
 
 interface Payment {
@@ -23,13 +23,13 @@ interface Props {
 }
 
 const printStyles = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
     padding: 0; margin: 0;
     background: #fff;
-    color: #1a1a2e;
+    color: #0f172a;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -42,164 +42,199 @@ const printStyles = `
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 40px;
+    margin-bottom: 36px;
+  }
+  .brand-logo {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #3b82f6, #6366f1);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    margin-bottom: 12px;
   }
   .brand h1 {
-    font-size: 28px;
-    font-weight: 700;
+    font-size: 22px;
+    font-weight: 800;
     letter-spacing: -0.5px;
-    color: #1a1a2e;
+    color: #0f172a;
   }
   .brand p {
-    font-size: 13px;
-    color: #6b7280;
-    margin-top: 4px;
+    font-size: 12px;
+    color: #94a3b8;
+    margin-top: 2px;
+    font-weight: 500;
   }
   .invoice-meta {
     text-align: right;
   }
   .invoice-meta .label {
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #9ca3af;
-    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: #94a3b8;
+    font-weight: 700;
   }
   .invoice-meta .number {
-    font-size: 15px;
-    font-weight: 600;
-    color: #1a1a2e;
-    margin-top: 2px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+    margin-top: 4px;
   }
   .invoice-meta .date {
-    font-size: 13px;
-    color: #6b7280;
+    font-size: 12px;
+    color: #64748b;
     margin-top: 6px;
+    font-weight: 500;
   }
   .status-badge {
-    display: inline-block;
-    padding: 4px 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 14px;
     border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    background: #dcfce7;
+    background: linear-gradient(135deg, #dcfce7, #bbf7d0);
     color: #166534;
-    margin-top: 8px;
+    margin-top: 10px;
   }
   .divider {
     height: 1px;
-    background: linear-gradient(90deg, transparent, #e5e7eb 20%, #e5e7eb 80%, transparent);
-    margin: 28px 0;
+    background: linear-gradient(90deg, transparent, #e2e8f0 20%, #e2e8f0 80%, transparent);
+    margin: 24px 0;
   }
   .section-title {
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 1.2px;
-    color: #9ca3af;
-    font-weight: 600;
-    margin-bottom: 16px;
+    letter-spacing: 1.5px;
+    color: #94a3b8;
+    font-weight: 700;
+    margin-bottom: 14px;
   }
   .info-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 20px;
+    gap: 16px;
+  }
+  .info-item {
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 12px 16px;
+    border: 1px solid #f1f5f9;
   }
   .info-item .label {
-    font-size: 12px;
-    color: #9ca3af;
-    font-weight: 500;
+    font-size: 10px;
+    color: #94a3b8;
+    font-weight: 700;
     margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
   .info-item .value {
     font-size: 14px;
-    font-weight: 500;
-    color: #1a1a2e;
+    font-weight: 600;
+    color: #0f172a;
   }
   .line-items {
     width: 100%;
     border-collapse: collapse;
   }
   .line-items thead th {
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: #9ca3af;
-    font-weight: 600;
+    letter-spacing: 1px;
+    color: #94a3b8;
+    font-weight: 700;
     padding: 10px 0;
-    border-bottom: 2px solid #f3f4f6;
+    border-bottom: 2px solid #f1f5f9;
     text-align: left;
   }
   .line-items thead th:last-child {
     text-align: right;
   }
   .line-items tbody td {
-    padding: 14px 0;
+    padding: 16px 0;
     font-size: 14px;
-    border-bottom: 1px solid #f3f4f6;
+    font-weight: 500;
+    border-bottom: 1px solid #f1f5f9;
   }
   .line-items tbody td:last-child {
     text-align: right;
-    font-weight: 600;
+    font-weight: 700;
+    font-size: 15px;
   }
   .total-section {
     display: flex;
     justify-content: flex-end;
-    margin-top: 24px;
+    margin-top: 28px;
   }
   .total-box {
-    background: linear-gradient(135deg, #1a1a2e 0%, #2d2b55 100%);
+    background: linear-gradient(135deg, #3b82f6, #6366f1);
     color: #fff;
-    padding: 20px 32px;
-    border-radius: 12px;
+    padding: 24px 36px;
+    border-radius: 16px;
     text-align: right;
     min-width: 220px;
+    box-shadow: 0 8px 30px rgba(59, 130, 246, 0.3);
   }
   .total-box .total-label {
-    font-size: 12px;
+    font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    opacity: 0.7;
-    font-weight: 500;
+    letter-spacing: 1.5px;
+    opacity: 0.8;
+    font-weight: 600;
   }
   .total-box .total-amount {
-    font-size: 32px;
-    font-weight: 700;
+    font-size: 34px;
+    font-weight: 800;
     margin-top: 4px;
     letter-spacing: -1px;
   }
   .notes-section {
-    margin-top: 28px;
+    margin-top: 24px;
     padding: 16px 20px;
-    background: #f9fafb;
-    border-radius: 8px;
-    border-left: 3px solid #e5e7eb;
+    background: #f8fafc;
+    border-radius: 12px;
+    border-left: 3px solid #3b82f6;
   }
   .notes-section .label {
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: #9ca3af;
-    font-weight: 600;
+    letter-spacing: 1px;
+    color: #94a3b8;
+    font-weight: 700;
     margin-bottom: 6px;
   }
   .notes-section .value {
     font-size: 13px;
-    color: #4b5563;
-    line-height: 1.5;
+    color: #475569;
+    line-height: 1.6;
+    font-weight: 500;
   }
   .footer {
     margin-top: 48px;
     text-align: center;
-    font-size: 12px;
-    color: #9ca3af;
+    padding-top: 24px;
+    border-top: 1px solid #f1f5f9;
   }
   .footer .thanks {
     font-size: 14px;
-    font-weight: 600;
-    color: #6b7280;
-    margin-bottom: 8px;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 4px;
+  }
+  .footer .legal {
+    font-size: 11px;
+    color: #94a3b8;
+    font-weight: 500;
   }
   @media print {
     body { padding: 0; }
@@ -235,7 +270,7 @@ export function ReceiptDialog({ payment, open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 glass-card rounded-2xl border-0">
         <DialogHeader className="px-6 pt-6 pb-0">
           <DialogTitle className="sr-only">Factura</DialogTitle>
         </DialogHeader>
@@ -245,14 +280,18 @@ export function ReceiptDialog({ payment, open, onOpenChange }: Props) {
             {/* Header */}
             <div className="flex items-start justify-between mb-8">
               <div>
-                <h1 className="text-2xl font-bold tracking-tight">Pago LLC</h1>
-                <p className="text-xs text-muted-foreground mt-1">Servicios Profesionales</p>
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 mb-3">
+                  <span className="text-primary font-extrabold text-lg">P</span>
+                </div>
+                <h1 className="text-xl font-extrabold tracking-tight">Pago LLC</h1>
+                <p className="text-[11px] text-muted-foreground mt-0.5 font-medium">Servicios Profesionales</p>
               </div>
               <div className="text-right">
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Factura</p>
-                <p className="text-sm font-semibold mt-0.5">{payment.receipt_number}</p>
-                <p className="text-xs text-muted-foreground mt-1">{formattedDate}</p>
-                <span className="inline-block mt-2 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-bold">Factura</p>
+                <p className="text-sm font-bold mt-1">{payment.receipt_number}</p>
+                <p className="text-xs text-muted-foreground mt-1.5 font-medium">{formattedDate}</p>
+                <span className="inline-flex items-center gap-1 mt-2.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                  <CheckCircle className="h-3 w-3" />
                   {payment.status}
                 </span>
               </div>
@@ -263,15 +302,15 @@ export function ReceiptDialog({ payment, open, onOpenChange }: Props) {
 
             {/* Client info */}
             <div className="mb-6">
-              <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-3">Datos del cliente</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[11px] text-muted-foreground mb-0.5">Nombre</p>
-                  <p className="text-sm font-medium">{payment.client_name || "—"}</p>
+              <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-bold mb-3">Datos del cliente</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-muted/50 p-3 border border-border/50">
+                  <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">Nombre</p>
+                  <p className="text-sm font-semibold">{payment.client_name || "—"}</p>
                 </div>
-                <div>
-                  <p className="text-[11px] text-muted-foreground mb-0.5">Fecha de pago</p>
-                  <p className="text-sm font-medium">{formattedDate}</p>
+                <div className="rounded-xl bg-muted/50 p-3 border border-border/50">
+                  <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">Fecha de pago</p>
+                  <p className="text-sm font-semibold">{formattedDate}</p>
                 </div>
               </div>
             </div>
@@ -281,53 +320,53 @@ export function ReceiptDialog({ payment, open, onOpenChange }: Props) {
 
             {/* Line items */}
             <div className="mb-4">
-              <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-3">Detalle</p>
+              <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-bold mb-3">Detalle</p>
               <table className="w-full">
                 <thead>
                   <tr className="border-b-2 border-muted">
-                    <th className="text-left text-[10px] uppercase tracking-wide text-muted-foreground font-semibold pb-2">Concepto</th>
-                    <th className="text-right text-[10px] uppercase tracking-wide text-muted-foreground font-semibold pb-2">Monto</th>
+                    <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground font-bold pb-2.5">Concepto</th>
+                    <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground font-bold pb-2.5">Monto</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr className="border-b border-muted/50">
-                    <td className="py-3 text-sm">{payment.concept}</td>
-                    <td className="py-3 text-sm font-semibold text-right">${payment.amount.toFixed(2)}</td>
+                    <td className="py-4 text-sm font-medium">{payment.concept}</td>
+                    <td className="py-4 text-sm font-bold text-right">${payment.amount.toFixed(2)}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
             {/* Total */}
-            <div className="flex justify-end mt-6">
-              <div className="bg-foreground text-background rounded-xl px-7 py-4 text-right min-w-[200px]">
-                <p className="text-[11px] uppercase tracking-wide opacity-60 font-medium">Total</p>
-                <p className="text-3xl font-bold tracking-tight mt-0.5">${payment.amount.toFixed(2)}</p>
+            <div className="flex justify-end mt-7">
+              <div className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground rounded-2xl px-8 py-5 text-right min-w-[220px] shadow-lg shadow-primary/20">
+                <p className="text-[10px] uppercase tracking-[0.15em] opacity-70 font-bold">Total</p>
+                <p className="text-3xl font-extrabold tracking-tight mt-1">${payment.amount.toFixed(2)}</p>
               </div>
             </div>
 
             {/* Notes */}
             {payment.notes && (
-              <div className="mt-6 p-4 bg-muted/50 rounded-lg border-l-[3px] border-muted-foreground/20">
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-1">Notas</p>
-                <p className="text-sm text-muted-foreground leading-relaxed">{payment.notes}</p>
+              <div className="mt-6 p-4 bg-muted/40 rounded-xl border-l-[3px] border-primary/30">
+                <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-bold mb-1.5">Notas</p>
+                <p className="text-sm text-muted-foreground leading-relaxed font-medium">{payment.notes}</p>
               </div>
             )}
 
             {/* Footer */}
-            <div className="mt-10 text-center">
-              <p className="text-sm font-semibold text-muted-foreground">¡Gracias por su pago!</p>
-              <p className="text-[11px] text-muted-foreground/60 mt-1">Este documento sirve como comprobante de pago oficial.</p>
+            <div className="mt-10 text-center pt-6 border-t border-border/50">
+              <p className="text-sm font-bold text-muted-foreground">¡Gracias por su pago!</p>
+              <p className="text-[11px] text-muted-foreground/60 mt-1 font-medium">Este documento sirve como comprobante de pago oficial.</p>
             </div>
           </div>
         </div>
 
         {/* Action buttons */}
-        <div className="flex gap-2 p-4 border-t no-print">
-          <Button onClick={handlePrint} className="flex-1">
+        <div className="flex gap-2 p-4 border-t border-border/50 no-print">
+          <Button onClick={handlePrint} className="flex-1 rounded-xl h-11 font-semibold">
             <Printer className="mr-2 h-4 w-4" /> Imprimir
           </Button>
-          <Button variant="outline" onClick={handlePrint} className="flex-1">
+          <Button variant="outline" onClick={handlePrint} className="flex-1 rounded-xl h-11 font-semibold glass">
             <Download className="mr-2 h-4 w-4" /> Descargar PDF
           </Button>
         </div>

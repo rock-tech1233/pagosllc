@@ -20,7 +20,13 @@ export function ThemeToggle() {
   }, []);
 
   return (
-    <Button variant="ghost" size="icon" onClick={() => setDark(!dark)} aria-label="Cambiar tema">
+    <Button 
+      variant="ghost" 
+      size="icon" 
+      onClick={() => setDark(!dark)} 
+      aria-label="Cambiar tema"
+      className="rounded-xl glass hover:shadow-md transition-all"
+    >
       {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
     </Button>
   );
