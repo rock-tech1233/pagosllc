@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { Printer, Download, CheckCircle } from "lucide-react";
+import { Printer, Download } from "lucide-react";
 import { useRef } from "react";
 
 interface Payment {
@@ -22,343 +22,172 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-const printStyles = `
-  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-    padding: 0; margin: 0;
-    background: #fff;
-    color: #0f172a;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-  .invoice {
-    max-width: 680px;
-    margin: 0 auto;
-    padding: 48px 40px;
-  }
-  .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 36px;
-  }
-  .brand-logo {
-    width: 48px;
-    height: 48px;
-    background: linear-gradient(135deg, #3b82f6, #6366f1);
-    border-radius: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 20px;
-    font-weight: 800;
-    letter-spacing: -1px;
-    margin-bottom: 12px;
-  }
-  .brand h1 {
-    font-size: 22px;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-    color: #0f172a;
-  }
-  .brand p {
-    font-size: 12px;
-    color: #94a3b8;
-    margin-top: 2px;
-    font-weight: 500;
-  }
-  .invoice-meta {
-    text-align: right;
-  }
-  .invoice-meta .label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: #94a3b8;
-    font-weight: 700;
-  }
-  .invoice-meta .number {
-    font-size: 14px;
-    font-weight: 700;
-    color: #0f172a;
-    margin-top: 4px;
-  }
-  .invoice-meta .date {
-    font-size: 12px;
-    color: #64748b;
-    margin-top: 6px;
-    font-weight: 500;
-  }
-  .status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 5px 14px;
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    background: linear-gradient(135deg, #dcfce7, #bbf7d0);
-    color: #166534;
-    margin-top: 10px;
-  }
-  .divider {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, #e2e8f0 20%, #e2e8f0 80%, transparent);
-    margin: 24px 0;
-  }
-  .section-title {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: #94a3b8;
-    font-weight: 700;
-    margin-bottom: 14px;
-  }
-  .info-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-  }
-  .info-item {
-    background: #f8fafc;
-    border-radius: 10px;
-    padding: 12px 16px;
-    border: 1px solid #f1f5f9;
-  }
-  .info-item .label {
-    font-size: 10px;
-    color: #94a3b8;
-    font-weight: 700;
-    margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .info-item .value {
-    font-size: 14px;
-    font-weight: 600;
-    color: #0f172a;
-  }
-  .line-items {
-    width: 100%;
-    border-collapse: collapse;
-  }
-  .line-items thead th {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #94a3b8;
-    font-weight: 700;
-    padding: 10px 0;
-    border-bottom: 2px solid #f1f5f9;
-    text-align: left;
-  }
-  .line-items thead th:last-child {
-    text-align: right;
-  }
-  .line-items tbody td {
-    padding: 16px 0;
-    font-size: 14px;
-    font-weight: 500;
-    border-bottom: 1px solid #f1f5f9;
-  }
-  .line-items tbody td:last-child {
-    text-align: right;
-    font-weight: 700;
-    font-size: 15px;
-  }
-  .total-section {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 28px;
-  }
-  .total-box {
-    background: linear-gradient(135deg, #3b82f6, #6366f1);
-    color: #fff;
-    padding: 24px 36px;
-    border-radius: 16px;
-    text-align: right;
-    min-width: 220px;
-    box-shadow: 0 8px 30px rgba(59, 130, 246, 0.3);
-  }
-  .total-box .total-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    opacity: 0.8;
-    font-weight: 600;
-  }
-  .total-box .total-amount {
-    font-size: 34px;
-    font-weight: 800;
-    margin-top: 4px;
-    letter-spacing: -1px;
-  }
-  .notes-section {
-    margin-top: 24px;
-    padding: 16px 20px;
-    background: #f8fafc;
-    border-radius: 12px;
-    border-left: 3px solid #3b82f6;
-  }
-  .notes-section .label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #94a3b8;
-    font-weight: 700;
-    margin-bottom: 6px;
-  }
-  .notes-section .value {
-    font-size: 13px;
-    color: #475569;
-    line-height: 1.6;
-    font-weight: 500;
-  }
-  .footer {
-    margin-top: 48px;
-    text-align: center;
-    padding-top: 24px;
-    border-top: 1px solid #f1f5f9;
-  }
-  .footer .thanks {
-    font-size: 14px;
-    font-weight: 700;
-    color: #475569;
-    margin-bottom: 4px;
-  }
-  .footer .legal {
-    font-size: 11px;
-    color: #94a3b8;
-    font-weight: 500;
-  }
-  @media print {
-    body { padding: 0; }
-    .invoice { padding: 24px; }
-  }
-`;
+function buildPrintHTML(payment: Payment, formattedDate: string) {
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<title>Factura ${payment.receipt_number}</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#fff;color:#0f172a;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page{max-width:760px;margin:0 auto;padding:48px 52px;position:relative}
+.page::before{content:'';position:absolute;top:0;left:0;right:0;height:6px;background:linear-gradient(90deg,#3b82f6,#8b5cf6,#ec4899);border-radius:0 0 3px 3px}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-top:16px;margin-bottom:40px}
+.brand{display:flex;align-items:center;gap:16px}
+.logo{width:56px;height:56px;background:linear-gradient(135deg,#3b82f6 0%,#8b5cf6 100%);border-radius:16px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(59,130,246,0.3)}
+.logo span{color:#fff;font-size:24px;font-weight:800}
+.brand-text h1{font-size:24px;font-weight:800;letter-spacing:-0.5px;color:#0f172a}
+.brand-text p{font-size:12px;color:#94a3b8;font-weight:600;margin-top:2px;letter-spacing:0.5px}
+.invoice-info{text-align:right}
+.invoice-label{font-size:28px;font-weight:800;color:#e2e8f0;letter-spacing:-1px;line-height:1}
+.invoice-num{font-size:13px;font-weight:700;color:#475569;margin-top:6px}
+.invoice-date{font-size:12px;color:#94a3b8;font-weight:500;margin-top:4px}
+.status{display:inline-flex;align-items:center;gap:5px;margin-top:10px;padding:5px 16px;border-radius:24px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;background:#ecfdf5;color:#059669;border:1px solid #a7f3d0}
+.status::before{content:'✓';font-size:12px}
+.section{margin-bottom:32px}
+.section-label{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#94a3b8;font-weight:700;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #f1f5f9}
+.client-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.client-card{background:linear-gradient(135deg,#f8fafc,#f1f5f9);border-radius:14px;padding:16px 20px;border:1px solid #e2e8f0}
+.client-card .label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#94a3b8;font-weight:700;margin-bottom:6px}
+.client-card .value{font-size:15px;font-weight:700;color:#1e293b}
+.items-table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border-radius:14px;border:1px solid #e2e8f0}
+.items-table thead{background:linear-gradient(135deg,#f8fafc,#f1f5f9)}
+.items-table thead th{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#64748b;font-weight:700;padding:14px 20px;text-align:left;border-bottom:2px solid #e2e8f0}
+.items-table thead th:last-child{text-align:right}
+.items-table tbody td{padding:18px 20px;font-size:14px;font-weight:600;color:#1e293b}
+.items-table tbody td:last-child{text-align:right;font-size:16px;font-weight:800;color:#3b82f6}
+.total-row{display:flex;justify-content:flex-end;margin-top:24px}
+.total-box{background:linear-gradient(135deg,#1e293b 0%,#334155 50%,#1e293b 100%);color:#fff;padding:28px 40px;border-radius:20px;text-align:right;min-width:260px;position:relative;overflow:hidden;box-shadow:0 12px 40px rgba(30,41,59,0.3)}
+.total-box::before{content:'';position:absolute;top:-50%;right:-20%;width:200px;height:200px;background:radial-gradient(circle,rgba(59,130,246,0.15),transparent);border-radius:50%}
+.total-box .t-label{font-size:11px;text-transform:uppercase;letter-spacing:2px;opacity:0.5;font-weight:600;position:relative}
+.total-box .t-amount{font-size:38px;font-weight:800;letter-spacing:-1.5px;margin-top:4px;position:relative}
+.total-box .t-currency{font-size:18px;font-weight:600;opacity:0.6;vertical-align:top;margin-right:2px}
+.notes-box{margin-top:24px;padding:18px 22px;background:#fffbeb;border-radius:14px;border:1px solid #fde68a;border-left:4px solid #f59e0b}
+.notes-box .n-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#92400e;font-weight:700;margin-bottom:8px}
+.notes-box .n-text{font-size:13px;color:#78350f;line-height:1.7;font-weight:500}
+.footer{margin-top:48px;text-align:center;padding-top:28px;border-top:2px solid #f1f5f9}
+.footer .thanks{font-size:15px;font-weight:700;color:#475569;margin-bottom:6px}
+.footer .legal{font-size:11px;color:#94a3b8;font-weight:500;line-height:1.6}
+.footer .brand-mark{display:inline-flex;align-items:center;gap:6px;margin-top:16px;padding:8px 20px;background:#f8fafc;border-radius:20px;border:1px solid #e2e8f0}
+.footer .brand-mark span{font-size:11px;font-weight:700;color:#64748b;letter-spacing:0.5px}
+.footer .brand-mark .dot{width:6px;height:6px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6)}
+@media print{.page{padding:24px 32px}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="brand">
+      <div class="logo"><span>P</span></div>
+      <div class="brand-text">
+        <h1>Pago LLC</h1>
+        <p>SERVICIOS PROFESIONALES</p>
+      </div>
+    </div>
+    <div class="invoice-info">
+      <div class="invoice-label">FACTURA</div>
+      <div class="invoice-num">${payment.receipt_number}</div>
+      <div class="invoice-date">${formattedDate}</div>
+      <div class="status">${payment.status}</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Información del Cliente</div>
+    <div class="client-grid">
+      <div class="client-card">
+        <div class="label">Nombre</div>
+        <div class="value">${payment.client_name || '—'}</div>
+      </div>
+      <div class="client-card">
+        <div class="label">Fecha de Pago</div>
+        <div class="value">${formattedDate}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Detalle de Servicios</div>
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th>Concepto</th>
+          <th>Monto</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${payment.concept}</td>
+          <td>$${payment.amount.toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="total-row">
+    <div class="total-box">
+      <div class="t-label">Total a Pagar</div>
+      <div class="t-amount"><span class="t-currency">$</span>${payment.amount.toFixed(2)}</div>
+    </div>
+  </div>
+
+  ${payment.notes ? `
+  <div class="notes-box">
+    <div class="n-label">Observaciones</div>
+    <div class="n-text">${payment.notes}</div>
+  </div>
+  ` : ''}
+
+  <div class="footer">
+    <div class="thanks">¡Gracias por confiar en nosotros!</div>
+    <div class="legal">Este documento sirve como comprobante de pago oficial.<br/>Conserve este recibo para sus registros.</div>
+    <div class="brand-mark">
+      <div class="dot"></div>
+      <span>Pago LLC</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>`;
+}
 
 export function ReceiptDialog({ payment, open, onOpenChange }: Props) {
-  const printRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLIFrameElement>(null);
 
   const handlePrint = () => {
-    const content = printRef.current;
-    if (!content) return;
+    if (!payment) return;
+    const formattedDate = format(parseISO(payment.payment_date), "d 'de' MMMM, yyyy", { locale: es });
+    const html = buildPrintHTML(payment, formattedDate);
     const win = window.open("", "_blank");
     if (!win) return;
-    win.document.write(`
-      <!DOCTYPE html>
-      <html><head>
-        <meta charset="utf-8" />
-        <title>Factura ${payment?.receipt_number}</title>
-        <style>${printStyles}</style>
-      </head><body>
-        ${content.innerHTML}
-      </body></html>
-    `);
+    win.document.write(html);
     win.document.close();
-    setTimeout(() => win.print(), 400);
+    setTimeout(() => win.print(), 500);
   };
 
   if (!payment) return null;
 
   const formattedDate = format(parseISO(payment.payment_date), "d 'de' MMMM, yyyy", { locale: es });
+  const previewHtml = buildPrintHTML(payment, formattedDate);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 glass-card rounded-2xl border-0">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 glass-card rounded-2xl border-0">
         <DialogHeader className="px-6 pt-6 pb-0">
           <DialogTitle className="sr-only">Factura</DialogTitle>
         </DialogHeader>
 
-        <div ref={printRef}>
-          <div className="invoice" style={{ maxWidth: 680, margin: "0 auto", padding: "32px 28px" }}>
-            {/* Header */}
-            <div className="flex items-start justify-between mb-8">
-              <div>
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 mb-3">
-                  <span className="text-primary font-extrabold text-lg">P</span>
-                </div>
-                <h1 className="text-xl font-extrabold tracking-tight">Pago LLC</h1>
-                <p className="text-[11px] text-muted-foreground mt-0.5 font-medium">Servicios Profesionales</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-bold">Factura</p>
-                <p className="text-sm font-bold mt-1">{payment.receipt_number}</p>
-                <p className="text-xs text-muted-foreground mt-1.5 font-medium">{formattedDate}</p>
-                <span className="inline-flex items-center gap-1 mt-2.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                  <CheckCircle className="h-3 w-3" />
-                  {payment.status}
-                </span>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent mb-6" />
-
-            {/* Client info */}
-            <div className="mb-6">
-              <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-bold mb-3">Datos del cliente</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl bg-muted/50 p-3 border border-border/50">
-                  <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">Nombre</p>
-                  <p className="text-sm font-semibold">{payment.client_name || "—"}</p>
-                </div>
-                <div className="rounded-xl bg-muted/50 p-3 border border-border/50">
-                  <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">Fecha de pago</p>
-                  <p className="text-sm font-semibold">{formattedDate}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent mb-6" />
-
-            {/* Line items */}
-            <div className="mb-4">
-              <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-bold mb-3">Detalle</p>
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b-2 border-muted">
-                    <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground font-bold pb-2.5">Concepto</th>
-                    <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground font-bold pb-2.5">Monto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b border-muted/50">
-                    <td className="py-4 text-sm font-medium">{payment.concept}</td>
-                    <td className="py-4 text-sm font-bold text-right">${payment.amount.toFixed(2)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Total */}
-            <div className="flex justify-end mt-7">
-              <div className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground rounded-2xl px-8 py-5 text-right min-w-[220px] shadow-lg shadow-primary/20">
-                <p className="text-[10px] uppercase tracking-[0.15em] opacity-70 font-bold">Total</p>
-                <p className="text-3xl font-extrabold tracking-tight mt-1">${payment.amount.toFixed(2)}</p>
-              </div>
-            </div>
-
-            {/* Notes */}
-            {payment.notes && (
-              <div className="mt-6 p-4 bg-muted/40 rounded-xl border-l-[3px] border-primary/30">
-                <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-bold mb-1.5">Notas</p>
-                <p className="text-sm text-muted-foreground leading-relaxed font-medium">{payment.notes}</p>
-              </div>
-            )}
-
-            {/* Footer */}
-            <div className="mt-10 text-center pt-6 border-t border-border/50">
-              <p className="text-sm font-bold text-muted-foreground">¡Gracias por su pago!</p>
-              <p className="text-[11px] text-muted-foreground/60 mt-1 font-medium">Este documento sirve como comprobante de pago oficial.</p>
-            </div>
-          </div>
+        {/* Live preview in iframe */}
+        <div className="px-4 pb-0">
+          <iframe
+            ref={previewRef}
+            srcDoc={previewHtml}
+            className="w-full rounded-xl border border-border/30"
+            style={{ height: 700 }}
+            title="Vista previa de factura"
+          />
         </div>
 
         {/* Action buttons */}

@@ -11,66 +11,19 @@ import { PaymentCalendar } from "@/components/PaymentCalendar";
 import { PaymentsList } from "@/components/PaymentsList";
 import { ReceiptDialog } from "@/components/ReceiptDialog";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Plus, Users, CalendarDays, FileText, StickyNote, Send, UserPlus, MessageSquare, ImageIcon, CheckCircle, XCircle, Clock, CreditCard } from "lucide-react";
+import { LogOut, Plus, Users, CalendarDays, FileText, StickyNote, Send, UserPlus, MessageSquare, ImageIcon, CheckCircle, XCircle, Clock, CreditCard, Upload, Trash2 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 
-interface ClientProfile {
-  user_id: string;
-  full_name: string;
-  username: string | null;
-}
-
-interface PaymentRow {
-  id: string;
-  amount: number;
-  payment_date: string;
-  concept: string;
-  notes: string | null;
-  receipt_number: string;
-  status: string;
-  client_id: string;
-}
-
-interface AdminNote {
-  id: string;
-  client_id: string;
-  content: string;
-  created_at: string;
-}
-
-interface ClientNote {
-  id: string;
-  user_id: string;
-  note_date: string;
-  content: string;
-  created_at: string;
-}
-
-interface ReceiptUpload {
-  id: string;
-  user_id: string;
-  file_url: string;
-  file_name: string;
-  description: string;
-  created_at: string;
-  status: string;
-}
-
-interface MetaAdsInvoice {
-  id: string;
-  user_id: string;
-  invoice_date: string;
-  amount: number;
-  file_url: string | null;
-  file_name: string;
-  description: string;
-  status: string;
-  created_at: string;
-}
+interface ClientProfile { user_id: string; full_name: string; username: string | null; }
+interface PaymentRow { id: string; amount: number; payment_date: string; concept: string; notes: string | null; receipt_number: string; status: string; client_id: string; }
+interface AdminNote { id: string; client_id: string; content: string; created_at: string; }
+interface ClientNote { id: string; user_id: string; note_date: string; content: string; created_at: string; }
+interface ReceiptUpload { id: string; user_id: string; file_url: string; file_name: string; description: string; created_at: string; status: string; }
+interface MetaAdsInvoice { id: string; user_id: string; invoice_date: string; amount: number; file_url: string | null; file_name: string; description: string; status: string; created_at: string; }
 
 const tabs = [
   { id: "register", label: "Pago", icon: Plus },
@@ -120,6 +73,13 @@ export default function AdminDashboard() {
 
   const [metaInvoices, setMetaInvoices] = useState<MetaAdsInvoice[]>([]);
 
+  // Meta Ads upload form (admin)
+  const [metaClientId, setMetaClientId] = useState("");
+  const [metaDate, setMetaDate] = useState(new Date().toISOString().split("T")[0]);
+  const [metaAmount, setMetaAmount] = useState("");
+  const [metaDesc, setMetaDesc] = useState("");
+  const [metaUploading, setMetaUploading] = useState(false);
+
   const fetchData = async () => {
     const [clientsRes, paymentsRes, notesRes, clientNotesRes, receiptsRes, metaRes] = await Promise.all([
       supabase.from("profiles").select("user_id, full_name, username"),
@@ -151,7 +111,7 @@ export default function AdminDashboard() {
     const { error } = await supabase.from("payments").insert({ client_id: formClientId, amount: parseFloat(formAmount), payment_date: formDate, concept: formConcept, notes: formNotes || null });
     setSubmitting(false);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); }
-    else { toast({ title: "Pago registrado y factura generada" }); setFormAmount(""); setFormNotes(""); fetchData(); }
+    else { toast({ title: "Pago registrado" }); setFormAmount(""); setFormNotes(""); fetchData(); }
   };
 
   const handleCreateClient = async (e: React.FormEvent) => {
@@ -160,9 +120,8 @@ export default function AdminDashboard() {
     setCreatingClient(true);
     const res = await supabase.functions.invoke("create-client", { body: { name: newClientName.trim(), username: newClientUsername.toLowerCase().trim(), password: newClientPassword } });
     setCreatingClient(false);
-    if (res.error || res.data?.error) { toast({ title: "Error al crear cliente", description: res.data?.error || res.error?.message || "Error desconocido", variant: "destructive" }); return; }
-    toast({ title: "Cliente creado", description: `${newClientName} puede iniciar sesión con usuario: ${newClientUsername}` });
-    setNewClientName(""); setNewClientUsername(""); setNewClientPassword(""); fetchData();
+    if (res.error || res.data?.error) { toast({ title: "Error", description: res.data?.error || res.error?.message, variant: "destructive" }); return; }
+    toast({ title: "Cliente creado" }); setNewClientName(""); setNewClientUsername(""); setNewClientPassword(""); fetchData();
   };
 
   const handleSendNote = async () => {
@@ -171,7 +130,7 @@ export default function AdminDashboard() {
     const { error } = await supabase.from("admin_client_notes").insert({ client_id: noteClientId, content: noteContent.trim() });
     setSavingNote(false);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); }
-    else { toast({ title: "Nota enviada al cliente" }); setNoteContent(""); fetchData(); }
+    else { toast({ title: "Nota enviada" }); setNoteContent(""); fetchData(); }
   };
 
   const handleViewReceipt = (payment: any) => { setSelectedReceipt(payment); setReceiptOpen(true); };
@@ -179,13 +138,45 @@ export default function AdminDashboard() {
   const handleUpdateReceiptStatus = async (receiptId: string, newStatus: string) => {
     const { error } = await supabase.from("payment_receipts").update({ status: newStatus }).eq("id", receiptId);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); }
-    else { toast({ title: newStatus === "confirmado" ? "Comprobante confirmado" : "Comprobante rechazado" }); setClientReceipts(prev => prev.map(r => r.id === receiptId ? { ...r, status: newStatus } : r)); }
+    else { toast({ title: newStatus === "confirmado" ? "Confirmado" : "Rechazado" }); setClientReceipts(prev => prev.map(r => r.id === receiptId ? { ...r, status: newStatus } : r)); }
   };
 
   const handleUpdateMetaStatus = async (invoiceId: string, newStatus: string) => {
     const { error } = await supabase.from("meta_ads_invoices").update({ status: newStatus }).eq("id", invoiceId);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); }
-    else { toast({ title: newStatus === "confirmado" ? "Factura Meta confirmada" : "Factura Meta rechazada" }); setMetaInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, status: newStatus } : i)); }
+    else { toast({ title: newStatus === "confirmado" ? "Confirmado" : "Rechazado" }); setMetaInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, status: newStatus } : i)); }
+  };
+
+  const handleDeleteMetaInvoice = async (invoice: MetaAdsInvoice) => {
+    if (invoice.file_url) { const parts = invoice.file_url.split("/payment-receipts/"); if (parts[1]) await supabase.storage.from("payment-receipts").remove([parts[1]]); }
+    await supabase.from("meta_ads_invoices").delete().eq("id", invoice.id);
+    setMetaInvoices(prev => prev.filter(i => i.id !== invoice.id));
+    toast({ title: "Factura eliminada" });
+  };
+
+  // Meta Ads upload by admin
+  const handleMetaInvoiceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!metaClientId || !metaAmount || parseFloat(metaAmount) <= 0) { toast({ title: "Selecciona cliente y monto", variant: "destructive" }); return; }
+    setMetaUploading(true);
+    let fileUrl: string | null = null;
+    let fileName = "";
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { toast({ title: "Archivo muy grande", variant: "destructive" }); setMetaUploading(false); return; }
+      const ext = file.name.split(".").pop();
+      const filePath = `${metaClientId}/meta-ads/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("payment-receipts").upload(filePath, file);
+      if (upErr) { toast({ title: "Error", description: upErr.message, variant: "destructive" }); setMetaUploading(false); return; }
+      const { data: urlData } = supabase.storage.from("payment-receipts").getPublicUrl(filePath);
+      fileUrl = urlData.publicUrl;
+      fileName = file.name;
+    }
+    const { data: row, error } = await supabase.from("meta_ads_invoices").insert({
+      user_id: metaClientId, invoice_date: metaDate, amount: parseFloat(metaAmount), file_url: fileUrl, file_name: fileName, description: metaDesc.trim(),
+    }).select().single();
+    setMetaUploading(false);
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); }
+    else { toast({ title: "Factura Meta Ads registrada" }); setMetaInvoices(prev => [row as any, ...prev]); setMetaAmount(""); setMetaDesc(""); if (e.target) e.target.value = ""; }
   };
 
   const handleCalendarDaySelect = (day: Date) => { setSelectedCalendarDay(day); };
@@ -195,78 +186,40 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background gradient-mesh">
-      {/* Header */}
       <header className="glass-header sticky top-0 z-30">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <h1 className="text-lg font-extrabold sm:text-xl tracking-tight">Pago LLC — Admin</h1>
           <div className="flex items-center gap-1 sm:gap-2">
             <ThemeToggle />
-            <Button variant="ghost" size="sm" onClick={signOut} className="rounded-xl">
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline ml-2">Salir</span>
-            </Button>
+            <Button variant="ghost" size="sm" onClick={signOut} className="rounded-xl"><LogOut className="h-4 w-4" /><span className="hidden sm:inline ml-2">Salir</span></Button>
           </div>
         </div>
       </header>
 
-      {/* Desktop tab bar */}
       {!isMobile && (
         <div className="glass-header !border-t-0 !border-b !shadow-none">
           <div className="mx-auto flex max-w-6xl gap-1 px-4 py-1.5 overflow-x-auto">
             {tabs.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setActiveTab(t.id)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200 whitespace-nowrap",
-                  activeTab === t.id
-                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                )}
-              >
-                <t.icon className="h-4 w-4" />
-                {t.label}
+              <button key={t.id} onClick={() => setActiveTab(t.id)} className={cn("flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200 whitespace-nowrap", activeTab === t.id ? "bg-primary text-primary-foreground shadow-md shadow-primary/20" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground")}>
+                <t.icon className="h-4 w-4" />{t.label}
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Main content */}
       <main className={cn("mx-auto w-full max-w-6xl flex-1 p-4 space-y-4", isMobile && "pb-24")}>
         {activeTab === "register" && (
           <div className="glass-card rounded-2xl overflow-hidden">
             <div className="p-5 pb-3"><h2 className="text-base sm:text-lg font-bold">Registrar nuevo pago</h2></div>
             <div className="px-5 pb-5">
               <form onSubmit={handleSubmitPayment} className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label className={labelClass}>Cliente</Label>
-                  <Select value={formClientId} onValueChange={setFormClientId}>
-                    <SelectTrigger className={inputClass}><SelectValue placeholder="Seleccionar cliente" /></SelectTrigger>
-                    <SelectContent className="glass-card rounded-xl border-0">{clients.map(c => (<SelectItem key={c.user_id} value={c.user_id}>{c.full_name || c.username || c.user_id.slice(0, 8)}</SelectItem>))}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className={labelClass}>Monto ($)</Label>
-                  <Input type="number" step="0.01" min="0" value={formAmount} onChange={e => setFormAmount(e.target.value)} required className={inputClass} />
-                </div>
-                <div className="space-y-2">
-                  <Label className={labelClass}>Fecha</Label>
-                  <Input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} required className={inputClass} />
-                </div>
-                <div className="space-y-2">
-                  <Label className={labelClass}>Concepto</Label>
-                  <Input value={formConcept} onChange={e => setFormConcept(e.target.value)} required className={inputClass} />
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label className={labelClass}>Notas (opcional)</Label>
-                  <Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} rows={2} className="rounded-xl bg-background/50 border-border/50" />
-                </div>
-                <div className="sm:col-span-2">
-                  <Button type="submit" disabled={submitting} className="w-full rounded-xl h-11 font-semibold">
-                    <Plus className="mr-2 h-4 w-4" /> Registrar Pago
-                  </Button>
-                </div>
+                <div className="space-y-2"><Label className={labelClass}>Cliente</Label><Select value={formClientId} onValueChange={setFormClientId}><SelectTrigger className={inputClass}><SelectValue placeholder="Seleccionar cliente" /></SelectTrigger><SelectContent className="glass-card rounded-xl border-0">{clients.map(c => (<SelectItem key={c.user_id} value={c.user_id}>{c.full_name || c.username || c.user_id.slice(0, 8)}</SelectItem>))}</SelectContent></Select></div>
+                <div className="space-y-2"><Label className={labelClass}>Monto ($)</Label><Input type="number" step="0.01" min="0" value={formAmount} onChange={e => setFormAmount(e.target.value)} required className={inputClass} /></div>
+                <div className="space-y-2"><Label className={labelClass}>Fecha</Label><Input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} required className={inputClass} /></div>
+                <div className="space-y-2"><Label className={labelClass}>Concepto</Label><Input value={formConcept} onChange={e => setFormConcept(e.target.value)} required className={inputClass} /></div>
+                <div className="space-y-2 sm:col-span-2"><Label className={labelClass}>Notas (opcional)</Label><Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} rows={2} className="rounded-xl bg-background/50 border-border/50" /></div>
+                <div className="sm:col-span-2"><Button type="submit" disabled={submitting} className="w-full rounded-xl h-11 font-semibold"><Plus className="mr-2 h-4 w-4" /> Registrar Pago</Button></div>
               </form>
             </div>
           </div>
@@ -276,80 +229,95 @@ export default function AdminDashboard() {
           <div className="space-y-4">
             <div className="glass-card rounded-2xl overflow-hidden">
               <div className="p-5 pb-3"><h2 className="text-base sm:text-lg font-bold">Calendario de Pagos</h2></div>
-              <div className="px-5 pb-5">
-                <PaymentCalendar payments={enrichedPayments} onDaySelect={handleCalendarDaySelect} noteDates={clientNoteDates} />
-              </div>
+              <div className="px-5 pb-5"><PaymentCalendar payments={enrichedPayments} onDaySelect={handleCalendarDaySelect} noteDates={clientNoteDates} /></div>
             </div>
             {selectedCalendarDay && dayClientNotes.length > 0 && (
               <div className="glass-card rounded-2xl overflow-hidden">
-                <div className="p-5 pb-3">
-                  <h2 className="flex items-center gap-2 text-base font-bold">
-                    <MessageSquare className="h-4 w-4 text-primary" />
-                    Notas de clientes — {format(selectedCalendarDay, "d 'de' MMMM yyyy", { locale: es })}
-                  </h2>
-                </div>
+                <div className="p-5 pb-3"><h2 className="flex items-center gap-2 text-base font-bold"><MessageSquare className="h-4 w-4 text-primary" />Notas — {format(selectedCalendarDay, "d 'de' MMMM yyyy", { locale: es })}</h2></div>
                 <div className="px-5 pb-5 space-y-3">
                   {dayClientNotes.map(n => (
                     <div key={n.id} className="rounded-xl bg-background/50 border border-border/50 p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <Badge variant="secondary" className="rounded-full font-semibold">{clientMap[n.user_id] || "Cliente"}</Badge>
-                        <span className="text-xs text-muted-foreground font-medium">{new Date(n.created_at).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}</span>
-                      </div>
+                      <div className="flex items-center justify-between mb-1"><Badge variant="secondary" className="rounded-full font-semibold">{clientMap[n.user_id] || "Cliente"}</Badge><span className="text-xs text-muted-foreground font-medium">{new Date(n.created_at).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}</span></div>
                       <p className="text-sm mt-1 font-medium">{n.content}</p>
                     </div>
                   ))}
                 </div>
               </div>
             )}
-            {selectedCalendarDay && dayClientNotes.length === 0 && (
-              <p className="text-center text-sm text-muted-foreground py-2 font-medium">Sin notas de clientes para este día.</p>
-            )}
           </div>
         )}
 
         {activeTab === "meta-ads" && (
-          <div className="glass-card rounded-2xl overflow-hidden">
-            <div className="p-5 pb-3"><h2 className="text-base sm:text-lg font-bold">Facturas Meta Ads de Clientes</h2></div>
-            <div className="px-5 pb-5">
-              {metaInvoices.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground font-medium">Ningún cliente ha subido facturas de Meta Ads aún.</p>
-              ) : (
-                <div className="space-y-3">
-                  {metaInvoices.map(inv => (
-                    <div key={inv.id} className="rounded-xl bg-background/50 border border-border/50 p-3 transition-all hover:shadow-md">
-                      <div className="flex items-center justify-between mb-2">
-                        <Badge variant="secondary" className="rounded-full font-semibold">{clientMap[inv.user_id] || "Cliente"}</Badge>
-                        <Badge className="rounded-full text-[10px] font-bold" variant={inv.status === "confirmado" ? "default" : inv.status === "rechazado" ? "destructive" : "secondary"}>
-                          {inv.status === "confirmado" && <CheckCircle className="h-3 w-3 mr-1" />}
-                          {inv.status === "pendiente" && <Clock className="h-3 w-3 mr-1" />}
-                          {inv.status === "rechazado" && <XCircle className="h-3 w-3 mr-1" />}
-                          {inv.status}
-                        </Badge>
+          <div className="space-y-4">
+            {/* Upload form */}
+            <div className="glass-card rounded-2xl overflow-hidden">
+              <div className="p-5 pb-3"><h2 className="text-base sm:text-lg font-bold">Subir Factura Meta Ads</h2></div>
+              <div className="px-5 pb-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2"><Label className={labelClass}>Cliente</Label><Select value={metaClientId} onValueChange={setMetaClientId}><SelectTrigger className={inputClass}><SelectValue placeholder="Seleccionar cliente" /></SelectTrigger><SelectContent className="glass-card rounded-xl border-0">{clients.map(c => (<SelectItem key={c.user_id} value={c.user_id}>{c.full_name || c.username || c.user_id.slice(0, 8)}</SelectItem>))}</SelectContent></Select></div>
+                  <div className="space-y-2"><Label className={labelClass}>Fecha</Label><Input type="date" value={metaDate} onChange={e => setMetaDate(e.target.value)} required className={inputClass} /></div>
+                  <div className="space-y-2"><Label className={labelClass}>Monto ($)</Label><Input type="number" step="0.01" min="0" value={metaAmount} onChange={e => setMetaAmount(e.target.value)} placeholder="0.00" className={inputClass} /></div>
+                  <div className="space-y-2"><Label className={labelClass}>Descripción (opcional)</Label><Input value={metaDesc} onChange={e => setMetaDesc(e.target.value)} placeholder="Campaña, Ad Set..." className={inputClass} /></div>
+                  <div className="sm:col-span-2">
+                    <Label className="cursor-pointer">
+                      <div className={cn("flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-4 transition-all hover:border-primary/50 hover:bg-accent/30", metaUploading && "opacity-50 pointer-events-none")}>
+                        <Upload className="h-6 w-6 text-primary mb-1" />
+                        <p className="text-sm font-semibold">{metaUploading ? "Subiendo..." : "Adjuntar factura (opcional)"}</p>
+                        <p className="text-xs text-muted-foreground mt-1 font-medium">Imagen o PDF (máx. 5MB)</p>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <div className="min-w-0">
-                          <p className="text-lg font-extrabold">${inv.amount.toFixed(2)}</p>
-                          <p className="text-xs text-muted-foreground font-medium">{format(parseISO(inv.invoice_date), "d MMM yyyy", { locale: es })}</p>
-                          {inv.description && <p className="text-sm text-muted-foreground truncate font-medium">{inv.description}</p>}
-                          {inv.file_name && (
-                            <a href={inv.file_url ?? "#"} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline font-semibold">📎 {inv.file_name}</a>
-                          )}
-                        </div>
-                      </div>
-                      {inv.status === "pendiente" && (
-                        <div className="flex gap-2 mt-3">
-                          <Button size="sm" className="flex-1 rounded-xl font-semibold" onClick={() => handleUpdateMetaStatus(inv.id, "confirmado")}>
-                            <CheckCircle className="mr-1 h-3.5 w-3.5" /> Confirmar
-                          </Button>
-                          <Button size="sm" variant="destructive" className="flex-1 rounded-xl font-semibold" onClick={() => handleUpdateMetaStatus(inv.id, "rechazado")}>
-                            <XCircle className="mr-1 h-3.5 w-3.5" /> Rechazar
-                          </Button>
-                        </div>
-                      )}
+                      <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleMetaInvoiceUpload} disabled={metaUploading || !metaAmount || !metaClientId} />
+                    </Label>
+                  </div>
+                  {metaAmount && metaClientId && (
+                    <div className="sm:col-span-2">
+                      <Button className="w-full rounded-xl h-11 font-semibold" disabled={metaUploading} onClick={() => handleMetaInvoiceUpload({ target: { files: null } } as any)}>
+                        <CreditCard className="mr-2 h-4 w-4" /> Registrar sin archivo
+                      </Button>
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
+              </div>
+            </div>
+
+            {/* List */}
+            <div className="glass-card rounded-2xl overflow-hidden">
+              <div className="p-5 pb-3"><h2 className="text-base sm:text-lg font-bold">Todas las Facturas Meta Ads</h2></div>
+              <div className="px-5 pb-5">
+                {metaInvoices.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground font-medium">No hay facturas de Meta Ads registradas.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {metaInvoices.map(inv => (
+                      <div key={inv.id} className="rounded-xl bg-background/50 border border-border/50 p-3 transition-all hover:shadow-md">
+                        <div className="flex items-center justify-between mb-2">
+                          <Badge variant="secondary" className="rounded-full font-semibold">{clientMap[inv.user_id] || "Cliente"}</Badge>
+                          <Badge className="rounded-full text-[10px] font-bold" variant={inv.status === "confirmado" ? "default" : inv.status === "rechazado" ? "destructive" : "secondary"}>
+                            {inv.status === "confirmado" && <CheckCircle className="h-3 w-3 mr-1" />}
+                            {inv.status === "pendiente" && <Clock className="h-3 w-3 mr-1" />}
+                            {inv.status === "rechazado" && <XCircle className="h-3 w-3 mr-1" />}
+                            {inv.status}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="min-w-0">
+                            <p className="text-lg font-extrabold">${inv.amount.toFixed(2)}</p>
+                            <p className="text-xs text-muted-foreground font-medium">{format(parseISO(inv.invoice_date), "d MMM yyyy", { locale: es })}</p>
+                            {inv.description && <p className="text-sm text-muted-foreground truncate font-medium">{inv.description}</p>}
+                            {inv.file_name && <a href={inv.file_url ?? "#"} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline font-semibold">📎 {inv.file_name}</a>}
+                          </div>
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive rounded-lg" onClick={() => handleDeleteMetaInvoice(inv)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        </div>
+                        {inv.status === "pendiente" && (
+                          <div className="flex gap-2 mt-3">
+                            <Button size="sm" className="flex-1 rounded-xl font-semibold" onClick={() => handleUpdateMetaStatus(inv.id, "confirmado")}><CheckCircle className="mr-1 h-3.5 w-3.5" /> Confirmar</Button>
+                            <Button size="sm" variant="destructive" className="flex-1 rounded-xl font-semibold" onClick={() => handleUpdateMetaStatus(inv.id, "rechazado")}><XCircle className="mr-1 h-3.5 w-3.5" /> Rechazar</Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -357,53 +325,36 @@ export default function AdminDashboard() {
         {activeTab === "invoices" && (
           <div className="glass-card rounded-2xl overflow-hidden">
             <div className="p-5 pb-3"><h2 className="text-base sm:text-lg font-bold">Todas las Facturas</h2></div>
-            <div className="px-5 pb-5">
-              <PaymentsList payments={enrichedPayments} showClient onViewReceipt={handleViewReceipt} />
-            </div>
+            <div className="px-5 pb-5"><PaymentsList payments={enrichedPayments} showClient onViewReceipt={handleViewReceipt} /></div>
           </div>
         )}
 
         {activeTab === "receipts" && (
           <div className="space-y-4">
             <div className="glass-card rounded-2xl overflow-hidden">
-              <div className="p-5 pb-3"><h2 className="text-base sm:text-lg font-bold">Comprobantes de Pago de Clientes</h2></div>
+              <div className="p-5 pb-3"><h2 className="text-base sm:text-lg font-bold">Comprobantes de Clientes</h2></div>
               <div className="px-5 pb-5">
                 {clientReceipts.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground font-medium">Ningún cliente ha subido comprobantes aún.</p>
+                  <p className="py-8 text-center text-sm text-muted-foreground font-medium">Sin comprobantes.</p>
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {clientReceipts.map(r => (
                       <div key={r.id} className="rounded-xl bg-background/50 border border-border/50 overflow-hidden transition-all hover:shadow-md">
                         <button className="w-full" onClick={() => setReceiptPreviewUrl(receiptPreviewUrl === r.file_url ? null : r.file_url)}>
-                          {r.file_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
-                            <img src={r.file_url} alt={r.file_name} className="w-full h-40 object-cover" />
-                          ) : (
-                            <div className="w-full h-40 flex items-center justify-center bg-muted/30">
-                              <FileText className="h-10 w-10 text-muted-foreground" />
-                            </div>
-                          )}
+                          {r.file_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? <img src={r.file_url} alt={r.file_name} className="w-full h-40 object-cover" /> : <div className="w-full h-40 flex items-center justify-center bg-muted/30"><FileText className="h-10 w-10 text-muted-foreground" /></div>}
                         </button>
                         <div className="p-3">
                           <div className="flex items-center justify-between mb-1">
                             <Badge variant="secondary" className="rounded-full font-semibold">{clientMap[r.user_id] || "Cliente"}</Badge>
                             <Badge className="rounded-full text-[10px] font-bold" variant={r.status === "confirmado" ? "default" : r.status === "rechazado" ? "destructive" : "secondary"}>
-                              {r.status === "confirmado" && <CheckCircle className="h-3 w-3 mr-1" />}
-                              {r.status === "pendiente" && <Clock className="h-3 w-3 mr-1" />}
-                              {r.status === "rechazado" && <XCircle className="h-3 w-3 mr-1" />}
-                              {r.status}
+                              {r.status === "confirmado" && <CheckCircle className="h-3 w-3 mr-1" />}{r.status === "pendiente" && <Clock className="h-3 w-3 mr-1" />}{r.status === "rechazado" && <XCircle className="h-3 w-3 mr-1" />}{r.status}
                             </Badge>
                           </div>
                           <p className="text-sm font-semibold truncate">{r.file_name}</p>
-                          {r.description && <p className="text-xs text-muted-foreground truncate font-medium">{r.description}</p>}
-                          <span className="text-[11px] text-muted-foreground font-medium">{new Date(r.created_at).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" })}</span>
                           {r.status === "pendiente" && (
                             <div className="flex gap-2 mt-2">
-                              <Button size="sm" className="flex-1 rounded-xl font-semibold" onClick={() => handleUpdateReceiptStatus(r.id, "confirmado")}>
-                                <CheckCircle className="mr-1 h-3.5 w-3.5" /> Confirmar
-                              </Button>
-                              <Button size="sm" variant="destructive" className="flex-1 rounded-xl font-semibold" onClick={() => handleUpdateReceiptStatus(r.id, "rechazado")}>
-                                <XCircle className="mr-1 h-3.5 w-3.5" /> Rechazar
-                              </Button>
+                              <Button size="sm" className="flex-1 rounded-xl font-semibold" onClick={() => handleUpdateReceiptStatus(r.id, "confirmado")}><CheckCircle className="mr-1 h-3.5 w-3.5" /> Confirmar</Button>
+                              <Button size="sm" variant="destructive" className="flex-1 rounded-xl font-semibold" onClick={() => handleUpdateReceiptStatus(r.id, "rechazado")}><XCircle className="mr-1 h-3.5 w-3.5" /> Rechazar</Button>
                             </div>
                           )}
                         </div>
@@ -415,12 +366,8 @@ export default function AdminDashboard() {
             </div>
             {receiptPreviewUrl && (
               <div className="glass-card rounded-2xl overflow-hidden p-2">
-                {receiptPreviewUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
-                  <img src={receiptPreviewUrl} alt="Preview" className="w-full rounded-xl" />
-                ) : (
-                  <iframe src={receiptPreviewUrl} className="w-full h-[500px] rounded-xl" title="PDF Preview" />
-                )}
-                <Button variant="outline" size="sm" className="mt-2 w-full rounded-xl glass" onClick={() => setReceiptPreviewUrl(null)}>Cerrar vista previa</Button>
+                {receiptPreviewUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? <img src={receiptPreviewUrl} alt="Preview" className="w-full rounded-xl" /> : <iframe src={receiptPreviewUrl} className="w-full h-[500px] rounded-xl" title="PDF" />}
+                <Button variant="outline" size="sm" className="mt-2 w-full rounded-xl glass" onClick={() => setReceiptPreviewUrl(null)}>Cerrar</Button>
               </div>
             )}
           </div>
@@ -432,62 +379,25 @@ export default function AdminDashboard() {
               <div className="p-5 pb-3"><h2 className="text-base sm:text-lg font-bold">Enviar nota de trabajo</h2></div>
               <div className="px-5 pb-5">
                 <div className="grid gap-4">
-                  <div className="space-y-2">
-                    <Label className={labelClass}>Cliente</Label>
-                    <Select value={noteClientId} onValueChange={setNoteClientId}>
-                      <SelectTrigger className={inputClass}><SelectValue placeholder="Seleccionar cliente" /></SelectTrigger>
-                      <SelectContent className="glass-card rounded-xl border-0">{clients.map(c => (<SelectItem key={c.user_id} value={c.user_id}>{c.full_name || c.username || c.user_id.slice(0, 8)}</SelectItem>))}</SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className={labelClass}>Descripción del trabajo</Label>
-                    <Textarea value={noteContent} onChange={e => setNoteContent(e.target.value)} placeholder="Ej: Se realizó mantenimiento general..." rows={3} className="rounded-xl bg-background/50 border-border/50" />
-                  </div>
-                  <Button onClick={handleSendNote} disabled={savingNote || !noteClientId || !noteContent.trim()} className="w-full sm:w-auto rounded-xl h-11 font-semibold">
-                    <Send className="mr-2 h-4 w-4" /> Enviar Nota
-                  </Button>
+                  <div className="space-y-2"><Label className={labelClass}>Cliente</Label><Select value={noteClientId} onValueChange={setNoteClientId}><SelectTrigger className={inputClass}><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent className="glass-card rounded-xl border-0">{clients.map(c => (<SelectItem key={c.user_id} value={c.user_id}>{c.full_name || c.username}</SelectItem>))}</SelectContent></Select></div>
+                  <div className="space-y-2"><Label className={labelClass}>Descripción</Label><Textarea value={noteContent} onChange={e => setNoteContent(e.target.value)} placeholder="Ej: Mantenimiento..." rows={3} className="rounded-xl bg-background/50 border-border/50" /></div>
+                  <Button onClick={handleSendNote} disabled={savingNote || !noteClientId || !noteContent.trim()} className="w-full sm:w-auto rounded-xl h-11 font-semibold"><Send className="mr-2 h-4 w-4" /> Enviar</Button>
                 </div>
               </div>
             </div>
-
             {clientNotes.length > 0 && (
               <div className="glass-card rounded-2xl overflow-hidden">
-                <div className="p-5 pb-3">
-                  <h2 className="flex items-center gap-2 text-base sm:text-lg font-bold">
-                    <MessageSquare className="h-4 w-4 text-primary" /> Notas de Clientes
-                  </h2>
-                </div>
+                <div className="p-5 pb-3"><h2 className="flex items-center gap-2 text-base sm:text-lg font-bold"><MessageSquare className="h-4 w-4 text-primary" /> Notas de Clientes</h2></div>
                 <div className="px-5 pb-5 space-y-3">
-                  {clientNotes.map(n => (
-                    <div key={n.id} className="rounded-xl bg-background/50 border border-border/50 p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <Badge variant="secondary" className="rounded-full font-semibold">{clientMap[n.user_id] || "Cliente"}</Badge>
-                        <span className="text-xs text-muted-foreground font-medium">{n.note_date}</span>
-                      </div>
-                      <p className="text-sm font-medium">{n.content}</p>
-                    </div>
-                  ))}
+                  {clientNotes.map(n => (<div key={n.id} className="rounded-xl bg-background/50 border border-border/50 p-3"><div className="flex items-center justify-between mb-1"><Badge variant="secondary" className="rounded-full font-semibold">{clientMap[n.user_id] || "Cliente"}</Badge><span className="text-xs text-muted-foreground font-medium">{n.note_date}</span></div><p className="text-sm font-medium">{n.content}</p></div>))}
                 </div>
               </div>
             )}
-
             <div className="glass-card rounded-2xl overflow-hidden">
-              <div className="p-5 pb-3"><h2 className="text-base sm:text-lg font-bold">Historial de Notas Enviadas</h2></div>
+              <div className="p-5 pb-3"><h2 className="text-base sm:text-lg font-bold">Historial Enviadas</h2></div>
               <div className="px-5 pb-5">
-                {adminNotes.length === 0 ? (
-                  <p className="text-muted-foreground text-sm font-medium">No hay notas enviadas aún.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {adminNotes.map(n => (
-                      <div key={n.id} className="rounded-xl bg-background/50 border border-border/50 p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-sm">{clientMap[n.client_id] || "Cliente"}</span>
-                          <span className="text-xs text-muted-foreground font-medium">{new Date(n.created_at).toLocaleDateString("es")}</span>
-                        </div>
-                        <p className="text-sm text-muted-foreground font-medium">{n.content}</p>
-                      </div>
-                    ))}
-                  </div>
+                {adminNotes.length === 0 ? <p className="text-muted-foreground text-sm font-medium">Sin notas.</p> : (
+                  <div className="space-y-3">{adminNotes.map(n => (<div key={n.id} className="rounded-xl bg-background/50 border border-border/50 p-3"><div className="flex items-center justify-between mb-1"><span className="font-semibold text-sm">{clientMap[n.client_id] || "Cliente"}</span><span className="text-xs text-muted-foreground font-medium">{new Date(n.created_at).toLocaleDateString("es")}</span></div><p className="text-sm text-muted-foreground font-medium">{n.content}</p></div>))}</div>
                 )}
               </div>
             </div>
@@ -500,40 +410,18 @@ export default function AdminDashboard() {
               <div className="p-5 pb-3"><h2 className="text-base sm:text-lg font-bold">Crear nuevo cliente</h2></div>
               <div className="px-5 pb-5">
                 <form onSubmit={handleCreateClient} className="grid gap-4">
-                  <div className="space-y-2">
-                    <Label className={labelClass}>Nombre completo</Label>
-                    <Input value={newClientName} onChange={e => setNewClientName(e.target.value)} required className={inputClass} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className={labelClass}>Usuario (para login)</Label>
-                    <Input value={newClientUsername} onChange={e => setNewClientUsername(e.target.value)} required className={inputClass} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className={labelClass}>Contraseña</Label>
-                    <Input type="password" minLength={6} value={newClientPassword} onChange={e => setNewClientPassword(e.target.value)} required className={inputClass} />
-                  </div>
-                  <Button type="submit" disabled={creatingClient} className="w-full rounded-xl h-11 font-semibold">
-                    <UserPlus className="mr-2 h-4 w-4" /> Crear Cliente
-                  </Button>
+                  <div className="space-y-2"><Label className={labelClass}>Nombre completo</Label><Input value={newClientName} onChange={e => setNewClientName(e.target.value)} required className={inputClass} /></div>
+                  <div className="space-y-2"><Label className={labelClass}>Usuario</Label><Input value={newClientUsername} onChange={e => setNewClientUsername(e.target.value)} required className={inputClass} /></div>
+                  <div className="space-y-2"><Label className={labelClass}>Contraseña</Label><Input type="password" minLength={6} value={newClientPassword} onChange={e => setNewClientPassword(e.target.value)} required className={inputClass} /></div>
+                  <Button type="submit" disabled={creatingClient} className="w-full rounded-xl h-11 font-semibold"><UserPlus className="mr-2 h-4 w-4" /> Crear Cliente</Button>
                 </form>
               </div>
             </div>
             <div className="glass-card rounded-2xl overflow-hidden">
               <div className="p-5 pb-3"><h2 className="text-base sm:text-lg font-bold">Clientes Registrados</h2></div>
               <div className="px-5 pb-5">
-                {clients.length === 0 ? (
-                  <p className="text-muted-foreground text-sm font-medium">No hay clientes registrados aún.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {clients.map(c => (
-                      <div key={c.user_id} className="flex items-center justify-between rounded-xl bg-background/50 border border-border/50 p-3 transition-all hover:shadow-md">
-                        <div>
-                          <span className="font-semibold text-sm">{c.full_name || "Sin nombre"}</span>
-                          {c.username && <span className="ml-2 text-xs text-muted-foreground font-medium">@{c.username}</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                {clients.length === 0 ? <p className="text-muted-foreground text-sm font-medium">Sin clientes.</p> : (
+                  <div className="space-y-2">{clients.map(c => (<div key={c.user_id} className="flex items-center justify-between rounded-xl bg-background/50 border border-border/50 p-3 transition-all hover:shadow-md"><div><span className="font-semibold text-sm">{c.full_name || "Sin nombre"}</span>{c.username && <span className="ml-2 text-xs text-muted-foreground font-medium">@{c.username}</span>}</div></div>))}</div>
                 )}
               </div>
             </div>
@@ -541,23 +429,10 @@ export default function AdminDashboard() {
         )}
       </main>
 
-      {/* Mobile bottom navigation */}
       {isMobile && (
         <nav className="fixed bottom-0 inset-x-0 z-40 glass-nav safe-area-bottom">
           <div className="flex items-center justify-around py-2">
-            {tabs.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setActiveTab(t.id)}
-                className={cn(
-                  "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl text-[10px] font-semibold transition-all min-w-[44px]",
-                  activeTab === t.id ? "text-primary bg-primary/10" : "text-muted-foreground"
-                )}
-              >
-                <t.icon className={cn("h-5 w-5", activeTab === t.id && "stroke-[2.5]")} />
-                {t.label}
-              </button>
-            ))}
+            {tabs.map(t => (<button key={t.id} onClick={() => setActiveTab(t.id)} className={cn("flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl text-[10px] font-semibold transition-all min-w-[44px]", activeTab === t.id ? "text-primary bg-primary/10" : "text-muted-foreground")}><t.icon className={cn("h-5 w-5", activeTab === t.id && "stroke-[2.5]")} />{t.label}</button>))}
           </div>
         </nav>
       )}
